@@ -1,0 +1,307 @@
+package cli_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+var testBinary string
+
+func TestMain(m *testing.M) {
+	_, file, _, _ := runtime.Caller(0)
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+
+	binDir, err := os.MkdirTemp("", "git-worktreeinclude-bin-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp bin dir: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(binDir)
+
+	testBinary = filepath.Join(binDir, "git-worktreeinclude")
+	build := exec.Command("go", "build", "-o", testBinary, "./cmd/git-worktreeinclude")
+	build.Dir = repoRoot
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to build test binary: %v\n", err)
+		os.Exit(1)
+	}
+
+	os.Exit(m.Run())
+}
+
+type fixture struct {
+	root string
+	wt   string
+}
+
+type jsonResult struct {
+	From        string `json:"from"`
+	To          string `json:"to"`
+	IncludeFile string `json:"include_file"`
+	Summary     struct {
+		Matched           int `json:"matched"`
+		Copied            int `json:"copied"`
+		SkippedSame       int `json:"skipped_same"`
+		SkippedMissingSrc int `json:"skipped_missing_src"`
+		Conflicts         int `json:"conflicts"`
+		Errors            int `json:"errors"`
+	} `json:"summary"`
+	Actions []struct {
+		Op     string `json:"op"`
+		Path   string `json:"path"`
+		Status string `json:"status"`
+	} `json:"actions"`
+}
+
+func TestApplyAC1AC2AC6AC7(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	if code != 0 {
+		t.Fatalf("apply --json exit code = %d, stderr=%s", code, stderr)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if realPath(t, res.From) != realPath(t, fx.root) {
+		t.Fatalf("expected source %q, got %q", fx.root, res.From)
+	}
+
+	envPath := filepath.Join(fx.wt, ".env")
+	envBytes, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("expected copied .env: %v", err)
+	}
+	if string(envBytes) != "SOURCE_ENV\n" {
+		t.Fatalf("unexpected .env content: %q", string(envBytes))
+	}
+
+	for _, a := range res.Actions {
+		if a.Path == "README.md" {
+			t.Fatalf("tracked file should not be copied")
+		}
+	}
+	if res.Summary.Errors != 0 {
+		t.Fatalf("expected no errors, got %d", res.Summary.Errors)
+	}
+}
+
+func TestApplyAC3ConflictExit3(t *testing.T) {
+	fx := setupFixture(t)
+	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
+
+	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto")
+	if code != 3 {
+		t.Fatalf("expected exit code 3, got %d", code)
+	}
+
+	got, err := os.ReadFile(filepath.Join(fx.wt, ".env.local"))
+	if err != nil {
+		t.Fatalf("read .env.local: %v", err)
+	}
+	if string(got) != "TARGET_LOCAL\n" {
+		t.Fatalf("target file should remain unchanged; got %q", string(got))
+	}
+}
+
+func TestApplyAC4ForceOverwrite(t *testing.T) {
+	fx := setupFixture(t)
+	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
+
+	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--force")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+
+	got, err := os.ReadFile(filepath.Join(fx.wt, ".env.local"))
+	if err != nil {
+		t.Fatalf("read .env.local: %v", err)
+	}
+	if string(got) != "SOURCE_LOCAL\n" {
+		t.Fatalf("force should overwrite; got %q", string(got))
+	}
+}
+
+func TestApplyAC5DryRun(t *testing.T) {
+	fx := setupFixture(t)
+
+	if err := os.Remove(filepath.Join(fx.wt, ".env")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("remove .env: %v", err)
+	}
+
+	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--dry-run")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+
+	if _, err := os.Stat(filepath.Join(fx.wt, ".env")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("dry-run should not create .env")
+	}
+}
+
+func TestApplyAC8MissingIncludeIsNoop(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", ".missing-worktreeinclude", "--json")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d", code)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || len(res.Actions) != 0 {
+		t.Fatalf("expected noop summary, got %+v", res.Summary)
+	}
+}
+
+func TestDoctorCommand(t *testing.T) {
+	fx := setupFixture(t)
+	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto")
+	if code != 0 {
+		t.Fatalf("doctor exit code = %d", code)
+	}
+	if !strings.Contains(stdout, "TARGET repo root:") {
+		t.Fatalf("doctor output missing target root: %s", stdout)
+	}
+	if !strings.Contains(stdout, "SUMMARY matched=") {
+		t.Fatalf("doctor output missing summary: %s", stdout)
+	}
+}
+
+func TestHookPathAndPrint(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, _, code := runCmd(t, fx.root, nil, testBinary, "hook", "path", "--absolute")
+	if code != 0 {
+		t.Fatalf("hook path exit code = %d", code)
+	}
+	hookPath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(hookPath) {
+		t.Fatalf("expected absolute hook path, got %q", hookPath)
+	}
+
+	snippet, _, code := runCmd(t, fx.root, nil, testBinary, "hook", "print", "post-checkout")
+	if code != 0 {
+		t.Fatalf("hook print exit code = %d", code)
+	}
+	if !strings.Contains(snippet, "git worktreeinclude apply --from auto --quiet || true") {
+		t.Fatalf("unexpected hook snippet: %s", snippet)
+	}
+}
+
+func TestGitExtensionInvocation(t *testing.T) {
+	fx := setupFixture(t)
+
+	binDir := filepath.Dir(testBinary)
+	env := []string{fmt.Sprintf("PATH=%s%c%s", binDir, os.PathListSeparator, os.Getenv("PATH"))}
+	stdout, stderr, code := runCmd(t, fx.wt, env, "git", "-C", fx.wt, "worktreeinclude", "apply", "--from", "auto", "--json")
+	if code != 0 {
+		t.Fatalf("git worktreeinclude apply failed: code=%d stderr=%s", code, stderr)
+	}
+	_ = decodeSingleJSON(t, stdout)
+}
+
+func setupFixture(t *testing.T) fixture {
+	t.Helper()
+
+	base := t.TempDir()
+	repo := filepath.Join(base, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	runGit(t, repo, "init", "-q")
+	runGit(t, repo, "config", "user.name", "Test User")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "branch", "-M", "main")
+
+	writeFile(t, filepath.Join(repo, "README.md"), "tracked\n")
+	writeFile(t, filepath.Join(repo, ".gitignore"), ".env\n.env.local\n")
+	writeFile(t, filepath.Join(repo, ".worktreeinclude"), ".env\n.env.local\nREADME.md\n")
+
+	runGit(t, repo, "add", "README.md", ".gitignore", ".worktreeinclude")
+	runGit(t, repo, "commit", "-q", "-m", "init")
+
+	writeFile(t, filepath.Join(repo, ".env"), "SOURCE_ENV\n")
+	writeFile(t, filepath.Join(repo, ".env.local"), "SOURCE_LOCAL\n")
+
+	wt := filepath.Join(base, "wt")
+	runGit(t, repo, "worktree", "add", "-q", wt, "-b", "feature")
+
+	return fixture{root: repo, wt: wt}
+}
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	stdout, stderr, code := runCmd(t, dir, nil, "git", append([]string{"-C", dir}, args...)...)
+	if code != 0 {
+		t.Fatalf("git %s failed: code=%d stderr=%s", strings.Join(args, " "), code, stderr)
+	}
+	return stdout
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func runCmd(t *testing.T, dir string, env []string, name string, args ...string) (stdout string, stderr string, exitCode int) {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	if len(env) > 0 {
+		cmd.Env = append(cmd.Env, env...)
+	}
+
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if err == nil {
+		return out.String(), errBuf.String(), 0
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return out.String(), errBuf.String(), exitErr.ExitCode()
+	}
+	t.Fatalf("failed to run command %s %v: %v", name, args, err)
+	return "", "", 1
+}
+
+func decodeSingleJSON(t *testing.T, raw string) jsonResult {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(raw))
+	var res jsonResult
+	if err := dec.Decode(&res); err != nil {
+		t.Fatalf("invalid JSON output: %v; raw=%q", err, raw)
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		t.Fatalf("expected single JSON object, trailing data exists: %q", raw)
+	}
+	return res
+}
+
+func realPath(t *testing.T, p string) string {
+	t.Helper()
+	if rp, err := filepath.EvalSymlinks(p); err == nil {
+		return filepath.Clean(rp)
+	}
+	return filepath.Clean(p)
+}
