@@ -1,6 +1,6 @@
 # git-worktreeinclude
 
-`git worktree` で作成した作業ツリーに、`.worktreeinclude` で宣言した ignored ファイルだけを安全に適用するツールです。
+`git-worktreeinclude` safely applies ignored files listed in `.worktreeinclude` from a source worktree to the current worktree.
 
 ## Quickstart
 
@@ -10,7 +10,7 @@
 go build -o git-worktreeinclude ./cmd/git-worktreeinclude
 ```
 
-`git worktreeinclude ...` 形式で使う場合は、`git-worktreeinclude` を `PATH` に置いてください。
+To use the Git extension form (`git worktreeinclude ...`), place `git-worktreeinclude` on your `PATH`.
 
 ### Apply
 
@@ -18,29 +18,29 @@ go build -o git-worktreeinclude ./cmd/git-worktreeinclude
 git-worktreeinclude apply --from auto
 ```
 
-または Git 拡張として:
+Or via Git extension:
 
 ```sh
 git worktreeinclude apply --from auto
 ```
 
-サブコマンド省略時は `apply` と同義です。
+Omitting the subcommand is equivalent to `apply`:
 
 ```sh
 git-worktreeinclude --from auto
 ```
 
-## `.worktreeinclude` の仕様
+## `.worktreeinclude` semantics
 
-- リポジトリルートに配置
-- フォーマットは gitignore 互換（`#` コメント、空行、`!` 否定、`/` アンカー、`**` など）
-- 実際の同期対象は次の積集合
-  - `.worktreeinclude` にマッチするパス
-  - Git が ignored と判定するパス
+- Place `.worktreeinclude` at repository root.
+- Format is gitignore-compatible (`#` comments, blank lines, `!` negation, `/` anchors, `**`, etc.).
+- Actual sync target is the intersection of:
+  - Paths matching `.worktreeinclude`
+  - Paths Git classifies as ignored
 
-つまり、tracked ファイルは `.worktreeinclude` に書いても同期対象になりません。
+Tracked files are never copied, even if listed in `.worktreeinclude`.
 
-例:
+Example:
 
 ```gitignore
 .env
@@ -51,49 +51,49 @@ git-worktreeinclude --from auto
 .idea/
 ```
 
-## コマンド
+## Commands
 
 ### `git-worktreeinclude apply`
 
-現在の worktree を同期先にして、source worktree からコピーします。
+Uses the current worktree as target and copies from source worktree.
 
 ```sh
 git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [--force] [--json] [--quiet] [--verbose]
 ```
 
-- `--from`: `auto`（デフォルト）は main worktree を自動選択
-- `--include`: include ファイル（デフォルト `.worktreeinclude`）
-- `--dry-run`: 実際には変更せず計画のみ
-- `--force`: 差分があっても上書き
-- `--json`: stdout に単一 JSON を出力
-- `--quiet`: 人間向けログを抑制
-- `--verbose`: 詳細表示
+- `--from`: `auto` (default) chooses the main worktree automatically
+- `--include`: include file path (default: `.worktreeinclude`)
+- `--dry-run`: plan only, make no changes
+- `--force`: overwrite differing target files
+- `--json`: emit a single JSON object to stdout
+- `--quiet`: suppress human-readable output
+- `--verbose`: print additional details
 
-安全デフォルト:
+Safe defaults:
 
-- tracked は触らない
-- 削除しない
-- 上書きしない（差分は conflict、exit code `3`）
-- `.worktreeinclude` 不在は no-op success（exit code `0`）
+- Never touches tracked files
+- Never deletes files
+- Never overwrites by default (differences become conflicts, exit code `3`)
+- Missing `.worktreeinclude` is a no-op success (exit code `0`)
 
 ### `git-worktreeinclude doctor`
 
-診断専用。dry-run 相当で要約を表示します。
+Diagnostic command. Produces a dry-run style summary.
 
 ```sh
 git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]
 ```
 
-表示内容:
+Shows:
 
-- target repo root
-- source 選択結果
-- include ファイルの有無・パターン数
+- target repository root
+- source selection result
+- include file status and pattern count
 - matched / copy planned / conflicts / missing source / skipped same / errors
 
 ### `git-worktreeinclude hook path`
 
-`core.hooksPath` を考慮した hooks パスを表示します。
+Prints the hooks directory path while respecting `core.hooksPath`.
 
 ```sh
 git-worktreeinclude hook path [--absolute]
@@ -101,15 +101,15 @@ git-worktreeinclude hook path [--absolute]
 
 ### `git-worktreeinclude hook print post-checkout`
 
-推奨 `post-checkout` スニペットを出力します。
+Prints the recommended `post-checkout` hook snippet.
 
 ```sh
 git-worktreeinclude hook print post-checkout
 ```
 
-## JSON 出力
+## JSON output
 
-`apply --json` は stdout に単一 JSON を出力します。
+`apply --json` emits a single JSON object to stdout.
 
 ```json
 {
@@ -132,26 +132,26 @@ git-worktreeinclude hook print post-checkout
 }
 ```
 
-- `path` は repo root 相対（`/` 区切り）
-- ファイル内容や秘密情報は出力しません
+- `path` is repo-root relative and slash-separated
+- File contents and secrets are never output
 
-## 外部ツール統合
+## External tool integration
 
-worktree 作成直後に次の 1 行を実行するだけで統合できます。
+Run this immediately after creating a worktree:
 
 ```sh
 git worktree add <path> -b <branch>
 git -C <path> worktreeinclude apply --from auto --json
 ```
 
-- 成功判定は exit code
-- 詳細は JSON の `summary` / `actions`
+- Evaluate success by exit code
+- Use JSON `summary` and `actions` for details
 
-## post-checkout 自動適用（手動導入）
+## post-checkout auto-apply (manual setup)
 
-自動インストールは行いません。README 手順で導入します。
+This project does not auto-install hooks. Use manual setup.
 
-### 共有 hooks（推奨）
+### Shared hooks (recommended)
 
 ```sh
 mkdir -p .githooks
@@ -160,7 +160,7 @@ chmod +x .githooks/post-checkout
 git config core.hooksPath .githooks
 ```
 
-生成される `post-checkout` の中身:
+Generated `post-checkout`:
 
 ```sh
 #!/bin/sh
@@ -172,36 +172,36 @@ if [ "$old" = "0000000000000000000000000000000000000000" ]; then
 fi
 ```
 
-- worktree 作成直後相当（`old` が 40 ゼロ）のみ自動適用
-- checkout 体験を壊さないよう、失敗は非致命
+- Runs only for newly created worktree/clone-style checkouts (`old` is 40 zeros)
+- Failure is non-fatal to avoid breaking checkout workflow
 
-### 既存フック管理（husky 等）がある場合
+### Existing hook managers (husky, etc.)
 
-- 既存 `post-checkout` を上書きせず、上の `if` ブロックのみ追記してください。
-- 既に `core.hooksPath` を使っている場合はその運用に合わせて追加してください。
+- Do not overwrite existing `post-checkout`; append the `if` block.
+- If `core.hooksPath` is already configured, add the hook within that convention.
 
-補足:
+Notes:
 
-- `git worktree add --no-checkout` では `post-checkout` が走らない可能性があります。
-- その場合は手動で `git worktreeinclude apply --from auto` を実行してください。
+- `git worktree add --no-checkout` may not trigger `post-checkout`.
+- In that case, run `git worktreeinclude apply --from auto` manually.
 
 ## Exit codes
 
-- `0`: 成功
-- `1`: 内部エラー
-- `2`: 引数エラー
-- `3`: conflict（`apply`）
-- `4`: 環境/前提エラー
+- `0`: success
+- `1`: internal error
+- `2`: argument error
+- `3`: conflict (`apply`)
+- `4`: environment/prerequisite error
 
-## トラブルシュート
+## Troubleshooting
 
-- `not inside a git repository`: Git 管理下で実行しているか確認
-- `source and target are not from the same repository`: `--from` が別 repo を指していないか確認
-- conflict で止まる: `--force` を使うか、対象ファイルの差分を解消して再実行
-- include 不在で何も起きない: `.worktreeinclude` 配置場所（repo root）と `--include` パスを確認
+- `not inside a git repository`: run from a Git repository
+- `source and target are not from the same repository`: verify `--from` points to the same repo worktree
+- conflict exit: use `--force` or resolve target differences first
+- no-op due to missing include: verify `.worktreeinclude` location and `--include` path
 
-## 開発
+## Development
 
 ```sh
-GOCACHE=$(pwd)/.gocache go test ./...
+go test ./...
 ```
