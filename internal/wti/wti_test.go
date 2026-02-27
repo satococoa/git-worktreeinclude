@@ -3,6 +3,7 @@ package wti
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -54,6 +55,24 @@ func TestNormalizeRepoPath(t *testing.T) {
 				t.Fatalf("want %q, got %q", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestNormalizeRepoPathBackslashBehavior(t *testing.T) {
+	got, err := normalizeRepoPath(`dir\file.txt`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if runtime.GOOS == "windows" {
+		if got != "dir/file.txt" {
+			t.Fatalf("expected slash-normalized path on Windows, got %q", got)
+		}
+		return
+	}
+
+	if got != `dir\file.txt` {
+		t.Fatalf("expected backslash to remain a literal character on non-Windows, got %q", got)
 	}
 }
 

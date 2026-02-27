@@ -114,6 +114,11 @@ func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Resu
 		return Result{}, errorCode(err), err
 	}
 
+	result, code := e.executePrepared(prep, opts.DryRun, opts.Force)
+	return result, code, nil
+}
+
+func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int) {
 	result := Result{
 		From:        prep.sourceRoot,
 		To:          prep.targetRoot,
@@ -125,10 +130,10 @@ func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Resu
 	}
 
 	if !prep.includeFound {
-		return result, exitcode.OK, nil
+		return result, exitcode.OK
 	}
 
-	executeCopies := !opts.DryRun
+	executeCopies := !dryRun
 	for _, rel := range prep.matched {
 		srcPath, err := secureJoin(prep.sourceRoot, rel)
 		if err != nil {
@@ -208,7 +213,7 @@ func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Resu
 			}
 		}
 
-		if !opts.Force {
+		if !force {
 			result.Actions = append(result.Actions, Action{Op: "conflict", Path: rel, Status: "diff"})
 			result.Summary.Conflicts++
 			continue
@@ -228,12 +233,12 @@ func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Resu
 	}
 
 	if result.Summary.Errors > 0 {
-		return result, exitcode.Internal, nil
+		return result, exitcode.Internal
 	}
-	if result.Summary.Conflicts > 0 && !opts.Force {
-		return result, exitcode.Conflict, nil
+	if result.Summary.Conflicts > 0 && !force {
+		return result, exitcode.Conflict
 	}
-	return result, exitcode.OK, nil
+	return result, exitcode.OK
 }
 
 func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (DoctorReport, error) {
@@ -242,15 +247,7 @@ func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (Do
 		return DoctorReport{}, err
 	}
 
-	res, _, err := e.Apply(ctx, cwd, ApplyOptions{
-		From:    prep.fromMode,
-		Include: prep.includeArg,
-		DryRun:  true,
-		Force:   false,
-	})
-	if err != nil {
-		return DoctorReport{}, err
-	}
+	res, _ := e.executePrepared(prep, true, false)
 
 	return DoctorReport{
 		TargetRoot:   prep.targetRoot,
@@ -517,7 +514,10 @@ func normalizeRepoPath(raw string) (string, error) {
 	if strings.ContainsRune(raw, '\x00') {
 		return "", fmt.Errorf("path contains NUL")
 	}
-	rel := strings.ReplaceAll(raw, "\\", "/")
+	rel := raw
+	if os.PathSeparator == '\\' {
+		rel = strings.ReplaceAll(rel, "\\", "/")
+	}
 	rel = path.Clean(rel)
 	rel = strings.TrimPrefix(rel, "./")
 	if rel == "" || rel == "." {
