@@ -30,7 +30,8 @@ jobs:
 
       - name: Skip prerelease tags
         if: ${{ contains(steps.tag.outputs.name, '-') }}
-        run: echo "Skipping prerelease tag: ${{ steps.tag.outputs.name }}"
+        run: |
+          echo "Skipping prerelease tag: ${{ steps.tag.outputs.name }}"
 
       - name: Bump Homebrew formula
         if: ${{ !contains(steps.tag.outputs.name, '-') }}
