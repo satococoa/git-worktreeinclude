@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -121,5 +122,24 @@ func TestFilesSame(t *testing.T) {
 	}
 	if same {
 		t.Fatalf("expected different files")
+	}
+}
+
+func TestCountPatternsSupportsLongLine(t *testing.T) {
+	dir := t.TempDir()
+	includePath := filepath.Join(dir, ".worktreeinclude")
+
+	longLine := strings.Repeat("a", 70*1024)
+	content := "# comment\n\n" + longLine + "\n"
+	if err := os.WriteFile(includePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write include file: %v", err)
+	}
+
+	count, err := countPatterns(includePath)
+	if err != nil {
+		t.Fatalf("countPatterns returned error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected count 1, got %d", count)
 	}
 }

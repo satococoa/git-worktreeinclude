@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -166,6 +167,21 @@ func TestApplyAC8MissingIncludeIsNoop(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsIncludeOutsideRepo(t *testing.T) {
+	fx := setupFixture(t)
+
+	outside := filepath.Join(filepath.Dir(fx.root), "outside.include")
+	writeFile(t, outside, ".env\n")
+
+	_, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", outside)
+	if code != 4 {
+		t.Fatalf("expected exit code 4, got %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "include path must be inside repository root") {
+		t.Fatalf("unexpected stderr: %s", stderr)
+	}
+}
+
 func TestDoctorCommand(t *testing.T) {
 	fx := setupFixture(t)
 	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto")
@@ -211,6 +227,24 @@ func TestGitExtensionInvocation(t *testing.T) {
 		t.Fatalf("git worktreeinclude apply failed: code=%d stderr=%s", code, stderr)
 	}
 	_ = decodeSingleJSON(t, stdout)
+}
+
+func TestMergeEnvOverridesExistingKey(t *testing.T) {
+	base := []string{"PATH=/usr/bin", "HOME=/tmp/home"}
+	overrides := []string{"PATH=/custom/bin:/usr/bin"}
+
+	merged := mergeEnv(base, overrides)
+
+	pathValue := ""
+	for _, kv := range merged {
+		if strings.HasPrefix(kv, "PATH=") {
+			pathValue = strings.TrimPrefix(kv, "PATH=")
+			break
+		}
+	}
+	if pathValue != "/custom/bin:/usr/bin" {
+		t.Fatalf("expected PATH override to win, got %q", pathValue)
+	}
 }
 
 func setupFixture(t *testing.T) fixture {
@@ -263,10 +297,7 @@ func runCmd(t *testing.T, dir string, env []string, name string, args ...string)
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	cmd.Env = os.Environ()
-	if len(env) > 0 {
-		cmd.Env = append(cmd.Env, env...)
-	}
+	cmd.Env = mergeEnv(os.Environ(), env)
 
 	var out bytes.Buffer
 	var errBuf bytes.Buffer
@@ -283,6 +314,36 @@ func runCmd(t *testing.T, dir string, env []string, name string, args ...string)
 	}
 	t.Fatalf("failed to run command %s %v: %v", name, args, err)
 	return "", "", 1
+}
+
+func mergeEnv(base []string, overrides []string) []string {
+	merged := make(map[string]string, len(base)+len(overrides))
+	for _, kv := range base {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		merged[parts[0]] = parts[1]
+	}
+	for _, kv := range overrides {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		merged[parts[0]] = parts[1]
+	}
+
+	keys := make([]string, 0, len(merged))
+	for k := range merged {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+merged[k])
+	}
+	return out
 }
 
 func decodeSingleJSON(t *testing.T, raw string) jsonResult {

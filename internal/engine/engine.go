@@ -291,6 +291,9 @@ func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (
 		includePath = filepath.Join(targetRoot, includePath)
 	}
 	includePath = filepath.Clean(includePath)
+	if err := ensurePathWithinRoot(targetRoot, includePath); err != nil {
+		return prepared{}, &CLIError{Code: exitcode.Env, Msg: "include path must be inside repository root", Err: err}
+	}
 
 	fromMode := fromOpt
 	if fromMode == "" {
@@ -434,6 +437,7 @@ func countPatterns(includePath string) (int, error) {
 	defer f.Close()
 
 	s := bufio.NewScanner(f)
+	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	count := 0
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
@@ -681,14 +685,30 @@ func ensurePathWithinRoot(root, candidate string) error {
 		return err
 	}
 
-	if real, err := filepath.EvalSymlinks(candAbs); err == nil {
-		candAbs = real
-	}
+	rootCanonical := rootAbs
 	if realRoot, err := filepath.EvalSymlinks(rootAbs); err == nil {
-		rootAbs = realRoot
+		rootCanonical = realRoot
+	}
+	candCanonical := candAbs
+	if realCand, err := filepath.EvalSymlinks(candAbs); err == nil {
+		candCanonical = realCand
 	}
 
-	if candAbs != rootAbs && !strings.HasPrefix(candAbs, rootAbs+string(os.PathSeparator)) {
+	rel, err := filepath.Rel(rootCanonical, candCanonical)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("path escapes repository root")
+	}
+
+	if rel == "" || rel == "." {
+		return nil
+	}
+	if strings.HasPrefix(rel, "."+string(os.PathSeparator)) {
+		return nil
+	}
+	if filepath.IsAbs(rel) {
 		return fmt.Errorf("path escapes repository root")
 	}
 	return nil
