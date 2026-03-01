@@ -203,5 +203,14 @@ Notes:
 ## Development
 
 ```sh
-go test ./...
+make fmt
+make check-fmt
+make vet
+make lint
+make test
+make test-race
+make ci
 ```
+
+CI runs on pull requests and pushes to `main` via GitHub Actions.
+`golangci-lint` is used with its default configuration (no `.golangci.yml`).

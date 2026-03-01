@@ -23,10 +23,12 @@ func TestMain(m *testing.M) {
 
 	binDir, err := os.MkdirTemp("", "git-worktreeinclude-bin-")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create temp bin dir: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to create temp bin dir: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(binDir)
+	defer func() {
+		_ = os.RemoveAll(binDir)
+	}()
 
 	testBinary = filepath.Join(binDir, "git-worktreeinclude")
 	build := exec.Command("go", "build", "-o", testBinary, "./cmd/git-worktreeinclude")
@@ -34,7 +36,7 @@ func TestMain(m *testing.M) {
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to build test binary: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to build test binary: %v\n", err)
 		os.Exit(1)
 	}
 

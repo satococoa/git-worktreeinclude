@@ -50,7 +50,7 @@ func (a *App) Run(args []string) int {
 		a.printRootUsage()
 		return exitcode.OK
 	default:
-		fmt.Fprintf(a.stderr, "unknown subcommand: %s\n\n", args[0])
+		writef(a.stderr, "unknown subcommand: %s\n\n", args[0])
 		a.printRootUsage()
 		return exitcode.Args
 	}
@@ -73,16 +73,16 @@ func (a *App) runApply(args []string) int {
 		return exitcode.Args
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(a.stderr, "apply does not accept positional arguments")
+		writeln(a.stderr, "apply does not accept positional arguments")
 		a.printApplyUsage()
 		return exitcode.Args
 	}
 	if *quiet && *verbose {
-		fmt.Fprintln(a.stderr, "--quiet and --verbose cannot be used together")
+		writeln(a.stderr, "--quiet and --verbose cannot be used together")
 		return exitcode.Args
 	}
 	if *from == "" {
-		fmt.Fprintln(a.stderr, "--from must not be empty")
+		writeln(a.stderr, "--from must not be empty")
 		return exitcode.Args
 	}
 
@@ -101,23 +101,23 @@ func (a *App) runApply(args []string) int {
 		enc := json.NewEncoder(a.stdout)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(result); err != nil {
-			fmt.Fprintf(a.stderr, "failed to write JSON: %v\n", err)
+			writef(a.stderr, "failed to write JSON: %v\n", err)
 			return exitcode.Internal
 		}
 		return code
 	}
 
 	if !*quiet {
-		fmt.Fprintf(a.stdout, "APPLY from: %s\n", result.From)
-		fmt.Fprintf(a.stdout, "APPLY to:   %s\n", result.To)
+		writef(a.stdout, "APPLY from: %s\n", result.From)
+		writef(a.stdout, "APPLY to:   %s\n", result.To)
 		if result.Summary.Matched == 0 {
-			fmt.Fprintln(a.stdout, "No matched ignored files.")
+			writeln(a.stdout, "No matched ignored files.")
 		}
 		for _, action := range result.Actions {
-			fmt.Fprintln(a.stdout, formatActionLine(action, *force))
+			writeln(a.stdout, formatActionLine(action, *force))
 		}
 		if *verbose || result.Summary.Matched > 0 {
-			fmt.Fprintf(
+			writef(
 				a.stdout,
 				"SUMMARY matched=%d copied=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
 				result.Summary.Matched,
@@ -146,16 +146,16 @@ func (a *App) runDoctor(args []string) int {
 		return exitcode.Args
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(a.stderr, "doctor does not accept positional arguments")
+		writeln(a.stderr, "doctor does not accept positional arguments")
 		a.printDoctorUsage()
 		return exitcode.Args
 	}
 	if *quiet && *verbose {
-		fmt.Fprintln(a.stderr, "--quiet and --verbose cannot be used together")
+		writeln(a.stderr, "--quiet and --verbose cannot be used together")
 		return exitcode.Args
 	}
 	if *from == "" {
-		fmt.Fprintln(a.stderr, "--from must not be empty")
+		writeln(a.stderr, "--from must not be empty")
 		return exitcode.Args
 	}
 
@@ -168,14 +168,14 @@ func (a *App) runDoctor(args []string) int {
 		return codedOrDefault(err, exitcode.Internal)
 	}
 
-	fmt.Fprintf(a.stdout, "TARGET repo root: %s\n", report.TargetRoot)
-	fmt.Fprintf(a.stdout, "SOURCE (--from %s): %s\n", report.FromMode, report.SourceRoot)
+	writef(a.stdout, "TARGET repo root: %s\n", report.TargetRoot)
+	writef(a.stdout, "SOURCE (--from %s): %s\n", report.FromMode, report.SourceRoot)
 	if report.IncludeFound {
-		fmt.Fprintf(a.stdout, "INCLUDE file: %s (patterns=%d)\n", report.IncludePath, report.PatternCount)
+		writef(a.stdout, "INCLUDE file: %s (patterns=%d)\n", report.IncludePath, report.PatternCount)
 	} else {
-		fmt.Fprintf(a.stdout, "INCLUDE file: %s (not found; no-op)\n", report.IncludePath)
+		writef(a.stdout, "INCLUDE file: %s (not found; no-op)\n", report.IncludePath)
 	}
-	fmt.Fprintf(
+	writef(
 		a.stdout,
 		"SUMMARY matched=%d copy_planned=%d conflicts=%d missing_src=%d skipped_same=%d errors=%d\n",
 		report.Result.Summary.Matched,
@@ -188,11 +188,11 @@ func (a *App) runDoctor(args []string) int {
 
 	if !*quiet {
 		for _, action := range report.Result.Actions {
-			fmt.Fprintln(a.stdout, formatActionLine(action, false))
+			writeln(a.stdout, formatActionLine(action, false))
 		}
 	}
 	if *verbose && report.Result.Summary.Matched == 0 {
-		fmt.Fprintln(a.stdout, "No matched ignored files.")
+		writeln(a.stdout, "No matched ignored files.")
 	}
 
 	return exitcode.OK
@@ -210,13 +210,13 @@ func (a *App) runHook(args []string) int {
 		fs.SetOutput(a.stderr)
 		absolute := fs.Bool("absolute", false, "print absolute hooks path")
 		fs.Usage = func() {
-			fmt.Fprintln(a.stderr, "Usage: git-worktreeinclude hook path [--absolute]")
+			writeln(a.stderr, "Usage: git-worktreeinclude hook path [--absolute]")
 		}
 		if err := fs.Parse(args[1:]); err != nil {
 			return exitcode.Args
 		}
 		if fs.NArg() != 0 {
-			fmt.Fprintln(a.stderr, "hook path does not accept positional arguments")
+			writeln(a.stderr, "hook path does not accept positional arguments")
 			return exitcode.Args
 		}
 
@@ -225,24 +225,24 @@ func (a *App) runHook(args []string) int {
 			a.printCodedError(err)
 			return codedOrDefault(err, exitcode.Internal)
 		}
-		fmt.Fprintln(a.stdout, filepath.ToSlash(p))
+		writeln(a.stdout, filepath.ToSlash(p))
 		return exitcode.OK
 
 	case "print":
 		if len(args) != 2 {
-			fmt.Fprintln(a.stderr, "Usage: git-worktreeinclude hook print post-checkout")
+			writeln(a.stderr, "Usage: git-worktreeinclude hook print post-checkout")
 			return exitcode.Args
 		}
 		snippet, err := hooks.PrintSnippet(args[1])
 		if err != nil {
-			fmt.Fprintln(a.stderr, err.Error())
+			writeln(a.stderr, err.Error())
 			return exitcode.Args
 		}
-		fmt.Fprint(a.stdout, snippet)
+		write(a.stdout, snippet)
 		return exitcode.OK
 
 	default:
-		fmt.Fprintf(a.stderr, "unknown hook subcommand: %s\n", args[0])
+		writef(a.stderr, "unknown hook subcommand: %s\n", args[0])
 		a.printHookUsage()
 		return exitcode.Args
 	}
@@ -280,7 +280,7 @@ func formatActionLine(action engine.Action, force bool) string {
 }
 
 func (a *App) printCodedError(err error) {
-	fmt.Fprintln(a.stderr, err.Error())
+	writeln(a.stderr, err.Error())
 }
 
 func codedOrDefault(err error, fallback int) int {
@@ -300,21 +300,33 @@ func mustGetwd() string {
 }
 
 func (a *App) printRootUsage() {
-	fmt.Fprintln(a.stderr, "Usage: git-worktreeinclude [apply] [flags]")
-	fmt.Fprintln(a.stderr, "       git-worktreeinclude doctor [flags]")
-	fmt.Fprintln(a.stderr, "       git-worktreeinclude hook path [--absolute]")
-	fmt.Fprintln(a.stderr, "       git-worktreeinclude hook print post-checkout")
+	writeln(a.stderr, "Usage: git-worktreeinclude [apply] [flags]")
+	writeln(a.stderr, "       git-worktreeinclude doctor [flags]")
+	writeln(a.stderr, "       git-worktreeinclude hook path [--absolute]")
+	writeln(a.stderr, "       git-worktreeinclude hook print post-checkout")
 }
 
 func (a *App) printApplyUsage() {
-	fmt.Fprintln(a.stderr, "Usage: git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [--force] [--json] [--quiet] [--verbose]")
+	writeln(a.stderr, "Usage: git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [--force] [--json] [--quiet] [--verbose]")
 }
 
 func (a *App) printDoctorUsage() {
-	fmt.Fprintln(a.stderr, "Usage: git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]")
+	writeln(a.stderr, "Usage: git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]")
 }
 
 func (a *App) printHookUsage() {
-	fmt.Fprintln(a.stderr, "Usage: git-worktreeinclude hook path [--absolute]")
-	fmt.Fprintln(a.stderr, "       git-worktreeinclude hook print post-checkout")
+	writeln(a.stderr, "Usage: git-worktreeinclude hook path [--absolute]")
+	writeln(a.stderr, "       git-worktreeinclude hook print post-checkout")
+}
+
+func write(w io.Writer, s string) {
+	_, _ = fmt.Fprint(w, s)
+}
+
+func writeln(w io.Writer, a ...any) {
+	_, _ = fmt.Fprintln(w, a...)
+}
+
+func writef(w io.Writer, format string, a ...any) {
+	_, _ = fmt.Fprintf(w, format, a...)
 }

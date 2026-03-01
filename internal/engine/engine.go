@@ -440,7 +440,9 @@ func countPatterns(includePath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	s := bufio.NewScanner(f)
 	s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -615,7 +617,9 @@ func hashFile(filePath string) ([32]byte, error) {
 	if err != nil {
 		return zero, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
