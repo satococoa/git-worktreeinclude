@@ -39,8 +39,9 @@ git-worktreeinclude --from auto
 
 ## `.worktreeinclude` semantics
 
-- Place `.worktreeinclude` at repository root.
+- Place `.worktreeinclude` at the source worktree root (for `--from auto`, this is typically the main worktree).
 - Format is gitignore-compatible (`#` comments, blank lines, `!` negation, `/` anchors, `**`, etc.).
+- `.worktreeinclude` may be tracked, untracked, or ignored; if the file exists in the source worktree, it is used.
 - Actual sync target is the intersection of:
   - Paths matching `.worktreeinclude`
   - Paths Git classifies as ignored
@@ -70,6 +71,8 @@ git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [-
 
 - `--from`: `auto` (default) chooses the main worktree automatically
 - `--include`: include file path (default: `.worktreeinclude`)
+  - relative path: resolved from source worktree root only
+  - absolute path: must be inside source worktree root
 - `--dry-run`: plan only, make no changes
 - `--force`: overwrite differing target files
 - `--json`: emit a single JSON object to stdout
@@ -81,7 +84,7 @@ Safe defaults:
 - Never touches tracked files
 - Never deletes files
 - Never overwrites by default (differences become conflicts, exit code `3`)
-- Missing `.worktreeinclude` is a no-op success (exit code `0`)
+- Missing source `.worktreeinclude` is a no-op success (exit code `0`)
 
 ### `git-worktreeinclude doctor`
 
@@ -96,6 +99,8 @@ Shows:
 - target repository root
 - source selection result
 - include file status and pattern count
+  - source include path resolution
+  - no-op reason when include file is missing in source
 - matched / copy planned / conflicts / missing source / skipped same / errors
 
 ### `git-worktreeinclude hook path`
@@ -205,7 +210,8 @@ Notes:
 - `not inside a git repository`: run from a Git repository
 - `source and target are not from the same repository`: verify `--from` points to the same repo worktree
 - conflict exit: use `--force` or resolve target differences first
-- no-op due to missing include: verify `.worktreeinclude` location and `--include` path
+- no-op due to missing include: verify `.worktreeinclude` exists in the source worktree selected by `--from`
+- if include exists only in target: copy that file to source worktree (or run with a different `--from`)
 
 ## Development
 

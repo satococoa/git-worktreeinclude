@@ -39,6 +39,14 @@ type Result struct {
 	IncludeFile string   `json:"include_file"`
 	Summary     Summary  `json:"summary"`
 	Actions     []Action `json:"actions"`
+
+	// Non-JSON metadata for human-readable CLI output.
+	ResolvedIncludePath string `json:"-"`
+	IncludeFound        bool   `json:"-"`
+	IncludeOrigin       string `json:"-"`
+	IncludeMissingHint  string `json:"-"`
+	TargetIncludePath   string `json:"-"`
+	PatternCount        int    `json:"-"`
 }
 
 type ApplyOptions struct {
@@ -54,13 +62,16 @@ type DoctorOptions struct {
 }
 
 type DoctorReport struct {
-	TargetRoot   string
-	SourceRoot   string
-	FromMode     string
-	IncludePath  string
-	IncludeFound bool
-	PatternCount int
-	Result       Result
+	TargetRoot        string
+	SourceRoot        string
+	FromMode          string
+	IncludePath       string
+	IncludeFound      bool
+	IncludeOrigin     string
+	IncludeHint       string
+	TargetIncludePath string
+	PatternCount      int
+	Result            Result
 }
 
 type Engine struct {
@@ -98,15 +109,26 @@ func NewEngine() *Engine {
 }
 
 type prepared struct {
-	targetRoot   string
-	sourceRoot   string
-	fromMode     string
-	includeArg   string
-	includePath  string
-	includeFound bool
-	patternCount int
-	matched      []string
+	targetRoot         string
+	sourceRoot         string
+	fromMode           string
+	includeArg         string
+	includePath        string
+	includeFound       bool
+	includeOrigin      string
+	includeMissingHint string
+	targetIncludePath  string
+	patternCount       int
+	matched            []string
 }
+
+const (
+	includeOriginSource   = "source"
+	includeOriginExplicit = "explicit"
+
+	includeHintSourceMissing             = "source_missing"
+	includeHintSourceMissingTargetExists = "source_missing_target_exists"
+)
 
 func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Result, int, error) {
 	prep, err := e.prepare(ctx, cwd, opts.From, opts.Include)
@@ -120,9 +142,15 @@ func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Resu
 
 func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int) {
 	result := Result{
-		From:        prep.sourceRoot,
-		To:          prep.targetRoot,
-		IncludeFile: prep.includeArg,
+		From:                prep.sourceRoot,
+		To:                  prep.targetRoot,
+		IncludeFile:         prep.includeArg,
+		ResolvedIncludePath: prep.includePath,
+		IncludeFound:        prep.includeFound,
+		IncludeOrigin:       prep.includeOrigin,
+		IncludeMissingHint:  prep.includeMissingHint,
+		TargetIncludePath:   prep.targetIncludePath,
+		PatternCount:        prep.patternCount,
 		Summary: Summary{
 			Matched: len(prep.matched),
 		},
@@ -250,13 +278,16 @@ func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (Do
 	res, _ := e.executePrepared(prep, true, false)
 
 	return DoctorReport{
-		TargetRoot:   prep.targetRoot,
-		SourceRoot:   prep.sourceRoot,
-		FromMode:     prep.fromMode,
-		IncludePath:  prep.includePath,
-		IncludeFound: prep.includeFound,
-		PatternCount: prep.patternCount,
-		Result:       res,
+		TargetRoot:        prep.targetRoot,
+		SourceRoot:        prep.sourceRoot,
+		FromMode:          prep.fromMode,
+		IncludePath:       prep.includePath,
+		IncludeFound:      prep.includeFound,
+		IncludeOrigin:     prep.includeOrigin,
+		IncludeHint:       prep.includeMissingHint,
+		TargetIncludePath: prep.targetIncludePath,
+		PatternCount:      prep.patternCount,
+		Result:            res,
 	}, nil
 }
 
@@ -292,15 +323,6 @@ func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (
 		includeArg = ".worktreeinclude"
 	}
 
-	includePath := includeArg
-	if !filepath.IsAbs(includePath) {
-		includePath = filepath.Join(targetRoot, includePath)
-	}
-	includePath = filepath.Clean(includePath)
-	if err := ensurePathWithinRoot(targetRoot, includePath); err != nil {
-		return prepared{}, &CLIError{Code: exitcode.Env, Msg: "include path must be inside repository root", Err: err}
-	}
-
 	fromMode := fromOpt
 	if fromMode == "" {
 		fromMode = "auto"
@@ -316,16 +338,36 @@ func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (
 	}
 
 	prep := prepared{
-		targetRoot:  targetRoot,
-		sourceRoot:  sourceRoot,
-		fromMode:    fromMode,
-		includeArg:  includeArg,
-		includePath: includePath,
+		targetRoot: targetRoot,
+		sourceRoot: sourceRoot,
+		fromMode:   fromMode,
+		includeArg: includeArg,
 	}
+
+	includePath := includeArg
+	if !filepath.IsAbs(includePath) {
+		includePath = filepath.Join(sourceRoot, includePath)
+		prep.includeOrigin = includeOriginSource
+		prep.targetIncludePath = filepath.Clean(filepath.Join(targetRoot, includeArg))
+	} else {
+		prep.includeOrigin = includeOriginExplicit
+	}
+
+	includePath = filepath.Clean(includePath)
+	if err := ensurePathWithinRoot(sourceRoot, includePath); err != nil {
+		return prepared{}, &CLIError{Code: exitcode.Env, Msg: "include path must be inside source repository root", Err: err}
+	}
+	prep.includePath = includePath
 
 	info, err := os.Stat(includePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			prep.includeMissingHint = includeHintSourceMissing
+			if prep.includeOrigin == includeOriginSource && prep.targetIncludePath != "" {
+				if targetInfo, targetErr := os.Lstat(prep.targetIncludePath); targetErr == nil && !targetInfo.IsDir() {
+					prep.includeMissingHint = includeHintSourceMissingTargetExists
+				}
+			}
 			return prep, nil
 		}
 		return prepared{}, &CLIError{Code: exitcode.Env, Msg: "failed to read include file", Err: err}
