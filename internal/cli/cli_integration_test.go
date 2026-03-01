@@ -169,6 +169,76 @@ func TestApplyAC8MissingIncludeIsNoop(t *testing.T) {
 	}
 }
 
+func TestApplyUsesSourceIncludeWhenTargetIncludeMissing(t *testing.T) {
+	fx := setupFixture(t)
+	if err := os.Remove(filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+		t.Fatalf("remove target include: %v", err)
+	}
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", code, stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if res.Summary.Copied != 2 {
+		t.Fatalf("expected source include to be used, got summary=%+v", res.Summary)
+	}
+}
+
+func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
+	fx := setupFixture(t)
+	if err := os.Remove(filepath.Join(fx.root, ".worktreeinclude")); err != nil {
+		t.Fatalf("remove source include: %v", err)
+	}
+	writeFile(t, filepath.Join(fx.wt, ".worktreeinclude"), ".env\n")
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", code, stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || len(res.Actions) != 0 {
+		t.Fatalf("expected source-missing include no-op, got summary=%+v", res.Summary)
+	}
+
+	humanStdout, _, humanCode := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto")
+	if humanCode != 0 {
+		t.Fatalf("expected human apply exit code 0, got %d", humanCode)
+	}
+	if !strings.Contains(humanStdout, "Hint: include file was not found in source worktree") {
+		t.Fatalf("apply output missing compatibility hint: %s", humanStdout)
+	}
+
+	doctorOut, _, doctorCode := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto")
+	if doctorCode != 0 {
+		t.Fatalf("doctor exit code = %d", doctorCode)
+	}
+	if !strings.Contains(doctorOut, "not found in source; found at target path") {
+		t.Fatalf("doctor output missing source/target compatibility hint: %s", doctorOut)
+	}
+}
+
+func TestApplyReadsIncludeFileIgnoredByGlobalExcludes(t *testing.T) {
+	fx := setupFixture(t)
+
+	globalIgnore := filepath.Join(t.TempDir(), "global_ignore")
+	writeFile(t, globalIgnore, ".global.worktreeinclude\n")
+	runGit(t, fx.root, "config", "core.excludesFile", globalIgnore)
+	writeFile(t, filepath.Join(fx.root, ".global.worktreeinclude"), ".env\n")
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", ".global.worktreeinclude", "--json")
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", code, stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if res.Summary.Copied == 0 {
+		t.Fatalf("expected ignored include file to be read, got summary=%+v", res.Summary)
+	}
+}
+
 func TestApplyRejectsIncludeOutsideRepo(t *testing.T) {
 	fx := setupFixture(t)
 
@@ -179,7 +249,7 @@ func TestApplyRejectsIncludeOutsideRepo(t *testing.T) {
 	if code != 4 {
 		t.Fatalf("expected exit code 4, got %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stderr, "include path must be inside repository root") {
+	if !strings.Contains(stderr, "include path must be inside source repository root") {
 		t.Fatalf("unexpected stderr: %s", stderr)
 	}
 }
@@ -191,23 +261,23 @@ func TestApplyRejectsIncludeSymlinkEscape(t *testing.T) {
 
 	fx := setupFixture(t)
 
-	outsideDir := filepath.Join(filepath.Dir(fx.wt), "outside")
+	outsideDir := filepath.Join(filepath.Dir(fx.root), "outside")
 	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
 		t.Fatalf("mkdir outside dir: %v", err)
 	}
 	outsideInclude := filepath.Join(outsideDir, "outside.include")
 	writeFile(t, outsideInclude, ".env\n")
 
-	linkPath := filepath.Join(fx.wt, ".include-link")
+	linkPath := filepath.Join(fx.root, ".include-link")
 	if err := os.Symlink(outsideInclude, linkPath); err != nil {
 		t.Fatalf("create include symlink: %v", err)
 	}
 
-	_, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", linkPath)
+	_, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", ".include-link")
 	if code != 4 {
 		t.Fatalf("expected exit code 4, got %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stderr, "include path must be inside repository root") {
+	if !strings.Contains(stderr, "include path must be inside source repository root") {
 		t.Fatalf("unexpected stderr: %s", stderr)
 	}
 }
@@ -232,7 +302,7 @@ func TestApplyJSONConflictOutputContract(t *testing.T) {
 
 func TestApplyWithLongIncludeLine(t *testing.T) {
 	fx := setupFixture(t)
-	longInclude := filepath.Join(fx.wt, ".long.worktreeinclude")
+	longInclude := filepath.Join(fx.root, ".long.worktreeinclude")
 	longPattern := strings.Repeat("a", 70*1024)
 	writeFile(t, longInclude, longPattern+"\n.env\n")
 
@@ -258,6 +328,9 @@ func TestDoctorCommand(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "SUMMARY matched=") {
 		t.Fatalf("doctor output missing summary: %s", stdout)
+	}
+	if !strings.Contains(stdout, "INCLUDE file:") {
+		t.Fatalf("doctor output missing include status: %s", stdout)
 	}
 }
 

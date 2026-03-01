@@ -110,8 +110,32 @@ func (a *App) runApply(args []string) int {
 	if !*quiet {
 		writef(a.stdout, "APPLY from: %s\n", result.From)
 		writef(a.stdout, "APPLY to:   %s\n", result.To)
+		if *verbose {
+			writeln(
+				a.stdout,
+				formatIncludeStatusLine(
+					result.ResolvedIncludePath,
+					result.IncludeFound,
+					result.IncludeOrigin,
+					result.IncludeMissingHint,
+					result.TargetIncludePath,
+					result.PatternCount,
+				),
+			)
+		}
 		if result.Summary.Matched == 0 {
 			writeln(a.stdout, "No matched ignored files.")
+			if !result.IncludeFound && result.IncludeMissingHint == "source_missing_target_exists" {
+				if result.TargetIncludePath != "" {
+					writef(
+						a.stdout,
+						"Hint: include file was not found in source worktree and was found only at target path: %s\n",
+						result.TargetIncludePath,
+					)
+				} else {
+					writeln(a.stdout, "Hint: include file was not found in source worktree and exists only in target worktree.")
+				}
+			}
 		}
 		for _, action := range result.Actions {
 			writeln(a.stdout, formatActionLine(action, *force))
@@ -170,11 +194,17 @@ func (a *App) runDoctor(args []string) int {
 
 	writef(a.stdout, "TARGET repo root: %s\n", report.TargetRoot)
 	writef(a.stdout, "SOURCE (--from %s): %s\n", report.FromMode, report.SourceRoot)
-	if report.IncludeFound {
-		writef(a.stdout, "INCLUDE file: %s (patterns=%d)\n", report.IncludePath, report.PatternCount)
-	} else {
-		writef(a.stdout, "INCLUDE file: %s (not found; no-op)\n", report.IncludePath)
-	}
+	writeln(
+		a.stdout,
+		formatIncludeStatusLine(
+			report.IncludePath,
+			report.IncludeFound,
+			report.IncludeOrigin,
+			report.IncludeHint,
+			report.TargetIncludePath,
+			report.PatternCount,
+		),
+	)
 	writef(
 		a.stdout,
 		"SUMMARY matched=%d copy_planned=%d conflicts=%d missing_src=%d skipped_same=%d errors=%d\n",
@@ -277,6 +307,25 @@ func formatActionLine(action engine.Action, force bool) string {
 	default:
 		return fmt.Sprintf("SKIP      %s", action.Path)
 	}
+}
+
+func formatIncludeStatusLine(path string, found bool, origin, hint, targetPath string, patternCount int) string {
+	if found {
+		originLabel := "source"
+		if origin == "explicit" {
+			originLabel = "explicit"
+		}
+		return fmt.Sprintf("INCLUDE file: %s (origin=%s, patterns=%d)", path, originLabel, patternCount)
+	}
+
+	if hint == "source_missing_target_exists" {
+		if targetPath != "" {
+			return fmt.Sprintf("INCLUDE file: %s (not found in source; found at target path %s; no-op)", path, targetPath)
+		}
+		return fmt.Sprintf("INCLUDE file: %s (not found in source; target has include file; no-op)", path)
+	}
+
+	return fmt.Sprintf("INCLUDE file: %s (not found in source; no-op)", path)
 }
 
 func (a *App) printCodedError(err error) {

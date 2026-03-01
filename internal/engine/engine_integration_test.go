@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -125,8 +126,126 @@ func TestEngineApplyIncludeValidationAndNoop(t *testing.T) {
 	if code != exitcode.Env {
 		t.Fatalf("Apply include outside exit code = %d, want %d", code, exitcode.Env)
 	}
-	if !strings.Contains(err.Error(), "include path must be inside repository root") {
+	if !strings.Contains(err.Error(), "include path must be inside source repository root") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEngineApplyUsesSourceIncludeWhenTargetIncludeMissing(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	if err := os.Remove(filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+		t.Fatalf("remove target include: %v", err)
+	}
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: ".worktreeinclude",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if res.Summary.Copied != 2 {
+		t.Fatalf("expected 2 copied files, got %+v", res.Summary)
+	}
+}
+
+func TestEngineApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	if err := os.Remove(filepath.Join(fx.root, ".worktreeinclude")); err != nil {
+		t.Fatalf("remove source include: %v", err)
+	}
+	writeFile(t, filepath.Join(fx.wt, ".worktreeinclude"), ".env\n")
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: ".worktreeinclude",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || len(res.Actions) != 0 {
+		t.Fatalf("expected source-missing include no-op, got %+v", res.Summary)
+	}
+
+	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
+		From:    "auto",
+		Include: ".worktreeinclude",
+	})
+	if err != nil {
+		t.Fatalf("Doctor returned error: %v", err)
+	}
+	if report.IncludeFound {
+		t.Fatalf("expected include to be missing")
+	}
+	if report.IncludeHint != "source_missing_target_exists" {
+		t.Fatalf("unexpected include hint: %q", report.IncludeHint)
+	}
+}
+
+func TestEngineApplyReadsIncludeFileIgnoredByGlobalExcludes(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	globalIgnore := filepath.Join(t.TempDir(), "global_ignore")
+	writeFile(t, globalIgnore, ".global.worktreeinclude\n")
+	runGit(t, fx.root, "config", "core.excludesFile", globalIgnore)
+
+	writeFile(t, filepath.Join(fx.root, ".global.worktreeinclude"), ".env\n")
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: ".global.worktreeinclude",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if res.Summary.Copied == 0 {
+		t.Fatalf("expected ignored include file to be read, got %+v", res.Summary)
+	}
+}
+
+func TestEngineDoctorHintsWhenTargetIncludeIsSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior and permissions vary on Windows")
+	}
+
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	if err := os.Remove(filepath.Join(fx.root, ".worktreeinclude")); err != nil {
+		t.Fatalf("remove source include: %v", err)
+	}
+	if err := os.Remove(filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+		t.Fatalf("remove target include: %v", err)
+	}
+
+	brokenTarget := filepath.Join(filepath.Dir(fx.wt), "missing.include")
+	if err := os.Symlink(brokenTarget, filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+		t.Fatalf("create target symlink include: %v", err)
+	}
+
+	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
+		From:    "auto",
+		Include: ".worktreeinclude",
+	})
+	if err != nil {
+		t.Fatalf("Doctor returned error: %v", err)
+	}
+	if report.IncludeHint != "source_missing_target_exists" {
+		t.Fatalf("expected target-only include hint, got %q", report.IncludeHint)
 	}
 }
 
