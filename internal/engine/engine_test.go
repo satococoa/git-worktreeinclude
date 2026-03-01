@@ -1,4 +1,4 @@
-package wti
+package engine
 
 import (
 	"os"

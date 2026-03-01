@@ -11,22 +11,22 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/satococoa/git-worktreeinclude/internal/engine"
 	"github.com/satococoa/git-worktreeinclude/internal/exitcode"
 	"github.com/satococoa/git-worktreeinclude/internal/hooks"
-	"github.com/satococoa/git-worktreeinclude/internal/wti"
 )
 
 type App struct {
 	stdout io.Writer
 	stderr io.Writer
-	engine *wti.Engine
+	engine *engine.Engine
 }
 
 func New(stdout, stderr io.Writer) *App {
 	return &App{
 		stdout: stdout,
 		stderr: stderr,
-		engine: wti.NewEngine(),
+		engine: engine.NewEngine(),
 	}
 }
 
@@ -86,7 +86,7 @@ func (a *App) runApply(args []string) int {
 		return exitcode.Args
 	}
 
-	result, code, err := a.engine.Apply(context.Background(), mustGetwd(), wti.ApplyOptions{
+	result, code, err := a.engine.Apply(context.Background(), mustGetwd(), engine.ApplyOptions{
 		From:    *from,
 		Include: *include,
 		DryRun:  *dryRun,
@@ -159,7 +159,7 @@ func (a *App) runDoctor(args []string) int {
 		return exitcode.Args
 	}
 
-	report, err := a.engine.Doctor(context.Background(), mustGetwd(), wti.DoctorOptions{
+	report, err := a.engine.Doctor(context.Background(), mustGetwd(), engine.DoctorOptions{
 		From:    *from,
 		Include: *include,
 	})
@@ -248,7 +248,7 @@ func (a *App) runHook(args []string) int {
 	}
 }
 
-func formatActionLine(action wti.Action, force bool) string {
+func formatActionLine(action engine.Action, force bool) string {
 	switch action.Op {
 	case "copy":
 		if action.Status == "planned" {
@@ -284,7 +284,7 @@ func (a *App) printCodedError(err error) {
 }
 
 func codedOrDefault(err error, fallback int) int {
-	var coded *wti.CLIError
+	var coded *engine.CLIError
 	if errors.As(err, &coded) {
 		return coded.Code
 	}
