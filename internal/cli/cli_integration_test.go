@@ -182,6 +182,69 @@ func TestApplyRejectsIncludeOutsideRepo(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsIncludeSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior and permissions vary on Windows")
+	}
+
+	fx := setupFixture(t)
+
+	outsideDir := filepath.Join(filepath.Dir(fx.wt), "outside")
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("mkdir outside dir: %v", err)
+	}
+	outsideInclude := filepath.Join(outsideDir, "outside.include")
+	writeFile(t, outsideInclude, ".env\n")
+
+	linkPath := filepath.Join(fx.wt, ".include-link")
+	if err := os.Symlink(outsideInclude, linkPath); err != nil {
+		t.Fatalf("create include symlink: %v", err)
+	}
+
+	_, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", linkPath)
+	if code != 4 {
+		t.Fatalf("expected exit code 4, got %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "include path must be inside repository root") {
+		t.Fatalf("unexpected stderr: %s", stderr)
+	}
+}
+
+func TestApplyJSONConflictOutputContract(t *testing.T) {
+	fx := setupFixture(t)
+	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	if code != 3 {
+		t.Fatalf("expected conflict exit code 3, got %d stderr=%s", code, stderr)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr for --json conflict output, got %q", stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if res.Summary.Conflicts == 0 {
+		t.Fatalf("expected conflicts > 0 in JSON summary")
+	}
+}
+
+func TestApplyWithLongIncludeLine(t *testing.T) {
+	fx := setupFixture(t)
+	longInclude := filepath.Join(fx.wt, ".long.worktreeinclude")
+	longPattern := strings.Repeat("a", 70*1024)
+	writeFile(t, longInclude, longPattern+"\n.env\n")
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", longInclude, "--json")
+	if code != 0 {
+		t.Fatalf("expected exit code 0 with long include line, got %d stderr=%s", code, stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if res.Summary.Copied == 0 {
+		t.Fatalf("expected at least one copied file, got summary=%+v", res.Summary)
+	}
+}
+
 func TestDoctorCommand(t *testing.T) {
 	fx := setupFixture(t)
 	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto")

@@ -143,3 +143,48 @@ func TestCountPatternsSupportsLongLine(t *testing.T) {
 		t.Fatalf("expected count 1, got %d", count)
 	}
 }
+
+func TestEnsurePathWithinRootBoundaries(t *testing.T) {
+	root := t.TempDir()
+
+	inside := filepath.Join(root, "sub", ".worktreeinclude")
+	if err := os.MkdirAll(filepath.Dir(inside), 0o755); err != nil {
+		t.Fatalf("mkdir inside: %v", err)
+	}
+	if err := os.WriteFile(inside, []byte(".env\n"), 0o644); err != nil {
+		t.Fatalf("write inside include: %v", err)
+	}
+
+	if err := ensurePathWithinRoot(root, inside); err != nil {
+		t.Fatalf("inside path should be allowed, got error: %v", err)
+	}
+
+	// Guard against naive prefix checks such as /repo vs /repo2.
+	outsideSibling := root + "2"
+	if err := ensurePathWithinRoot(root, outsideSibling); err == nil {
+		t.Fatalf("outside sibling path should be rejected")
+	}
+}
+
+func TestEnsurePathWithinRootRejectsSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation may require elevated privileges on Windows")
+	}
+
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	escaped := filepath.Join(link, ".worktreeinclude")
+	if err := os.WriteFile(filepath.Join(outside, ".worktreeinclude"), []byte(".env\n"), 0o644); err != nil {
+		t.Fatalf("write outside include: %v", err)
+	}
+
+	if err := ensurePathWithinRoot(root, escaped); err == nil {
+		t.Fatalf("symlink escape path should be rejected")
+	}
+}
