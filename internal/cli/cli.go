@@ -125,7 +125,7 @@ func (a *App) runApply(args []string) int {
 		}
 		if result.Summary.Matched == 0 {
 			writeln(a.stdout, "No matched ignored files.")
-			if !result.IncludeFound && result.IncludeMissingHint == "source_missing_target_exists" {
+			if !result.IncludeFound && result.IncludeMissingHint == engine.IncludeMissingHintSourceMissingTargetExists {
 				if result.TargetIncludePath != "" {
 					writef(
 						a.stdout,
@@ -200,7 +200,7 @@ func (a *App) runDoctor(args []string) int {
 			report.IncludePath,
 			report.IncludeFound,
 			report.IncludeOrigin,
-			report.IncludeHint,
+			report.IncludeMissingHint,
 			report.TargetIncludePath,
 			report.PatternCount,
 		),
@@ -311,14 +311,14 @@ func formatActionLine(action engine.Action, force bool) string {
 
 func formatIncludeStatusLine(path string, found bool, origin, hint, targetPath string, patternCount int) string {
 	if found {
-		originLabel := "source"
-		if origin == "explicit" {
-			originLabel = "explicit"
+		originLabel := engine.IncludeOriginSource
+		if origin == engine.IncludeOriginExplicit {
+			originLabel = engine.IncludeOriginExplicit
 		}
 		return fmt.Sprintf("INCLUDE file: %s (origin=%s, patterns=%d)", path, originLabel, patternCount)
 	}
 
-	if hint == "source_missing_target_exists" {
+	if hint == engine.IncludeMissingHintSourceMissingTargetExists {
 		if targetPath != "" {
 			return fmt.Sprintf("INCLUDE file: %s (not found in source; found at target path %s; no-op)", path, targetPath)
 		}

@@ -62,16 +62,16 @@ type DoctorOptions struct {
 }
 
 type DoctorReport struct {
-	TargetRoot        string
-	SourceRoot        string
-	FromMode          string
-	IncludePath       string
-	IncludeFound      bool
-	IncludeOrigin     string
-	IncludeHint       string
-	TargetIncludePath string
-	PatternCount      int
-	Result            Result
+	TargetRoot         string
+	SourceRoot         string
+	FromMode           string
+	IncludePath        string
+	IncludeFound       bool
+	IncludeOrigin      string
+	IncludeMissingHint string
+	TargetIncludePath  string
+	PatternCount       int
+	Result             Result
 }
 
 type Engine struct {
@@ -123,11 +123,11 @@ type prepared struct {
 }
 
 const (
-	includeOriginSource   = "source"
-	includeOriginExplicit = "explicit"
+	IncludeOriginSource   = "source"
+	IncludeOriginExplicit = "explicit"
 
-	includeHintSourceMissing             = "source_missing"
-	includeHintSourceMissingTargetExists = "source_missing_target_exists"
+	IncludeMissingHintSourceMissing             = "source_missing"
+	IncludeMissingHintSourceMissingTargetExists = "source_missing_target_exists"
 )
 
 func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Result, int, error) {
@@ -278,16 +278,16 @@ func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (Do
 	res, _ := e.executePrepared(prep, true, false)
 
 	return DoctorReport{
-		TargetRoot:        prep.targetRoot,
-		SourceRoot:        prep.sourceRoot,
-		FromMode:          prep.fromMode,
-		IncludePath:       prep.includePath,
-		IncludeFound:      prep.includeFound,
-		IncludeOrigin:     prep.includeOrigin,
-		IncludeHint:       prep.includeMissingHint,
-		TargetIncludePath: prep.targetIncludePath,
-		PatternCount:      prep.patternCount,
-		Result:            res,
+		TargetRoot:         prep.targetRoot,
+		SourceRoot:         prep.sourceRoot,
+		FromMode:           prep.fromMode,
+		IncludePath:        prep.includePath,
+		IncludeFound:       prep.includeFound,
+		IncludeOrigin:      prep.includeOrigin,
+		IncludeMissingHint: prep.includeMissingHint,
+		TargetIncludePath:  prep.targetIncludePath,
+		PatternCount:       prep.patternCount,
+		Result:             res,
 	}, nil
 }
 
@@ -347,10 +347,10 @@ func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (
 	includePath := includeArg
 	if !filepath.IsAbs(includePath) {
 		includePath = filepath.Join(sourceRoot, includePath)
-		prep.includeOrigin = includeOriginSource
+		prep.includeOrigin = IncludeOriginSource
 		prep.targetIncludePath = filepath.Clean(filepath.Join(targetRoot, includeArg))
 	} else {
-		prep.includeOrigin = includeOriginExplicit
+		prep.includeOrigin = IncludeOriginExplicit
 	}
 
 	includePath = filepath.Clean(includePath)
@@ -362,10 +362,10 @@ func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (
 	info, err := os.Stat(includePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			prep.includeMissingHint = includeHintSourceMissing
-			if prep.includeOrigin == includeOriginSource && prep.targetIncludePath != "" {
+			prep.includeMissingHint = IncludeMissingHintSourceMissing
+			if prep.includeOrigin == IncludeOriginSource && prep.targetIncludePath != "" {
 				if targetInfo, targetErr := os.Lstat(prep.targetIncludePath); targetErr == nil && !targetInfo.IsDir() {
-					prep.includeMissingHint = includeHintSourceMissingTargetExists
+					prep.includeMissingHint = IncludeMissingHintSourceMissingTargetExists
 				}
 			}
 			return prep, nil

@@ -187,8 +187,8 @@ func TestEngineApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testin
 	if report.IncludeFound {
 		t.Fatalf("expected include to be missing")
 	}
-	if report.IncludeHint != "source_missing_target_exists" {
-		t.Fatalf("unexpected include hint: %q", report.IncludeHint)
+	if report.IncludeMissingHint != IncludeMissingHintSourceMissingTargetExists {
+		t.Fatalf("unexpected include hint: %q", report.IncludeMissingHint)
 	}
 }
 
@@ -244,8 +244,8 @@ func TestEngineDoctorHintsWhenTargetIncludeIsSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Doctor returned error: %v", err)
 	}
-	if report.IncludeHint != "source_missing_target_exists" {
-		t.Fatalf("expected target-only include hint, got %q", report.IncludeHint)
+	if report.IncludeMissingHint != IncludeMissingHintSourceMissingTargetExists {
+		t.Fatalf("expected target-only include hint, got %q", report.IncludeMissingHint)
 	}
 }
 
