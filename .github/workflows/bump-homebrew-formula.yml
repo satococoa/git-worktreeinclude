@@ -1,0 +1,45 @@
+name: Bump Homebrew Formula
+
+on:
+  release:
+    types:
+      - released
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag name to bump (for example: v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bump-homebrew-formula:
+    if: ${{ (github.event_name == 'release' && github.event.release.prerelease == false) || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip prerelease tags
+        if: ${{ contains(steps.tag.outputs.name, '-') }}
+        run: |
+          echo "Skipping prerelease tag: ${{ steps.tag.outputs.name }}"
+
+      - name: Bump Homebrew formula
+        if: ${{ !contains(steps.tag.outputs.name, '-') }}
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          homebrew-tap: satococoa/homebrew-tap
+          formula-name: git-worktreeinclude
+          formula-path: git-worktreeinclude.rb
+          tag-name: ${{ steps.tag.outputs.name }}
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
