@@ -42,7 +42,22 @@ func (r *Runner) RunText(ctx context.Context, cwd string, args ...string) (strin
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return trimTrailingEOL(string(out)), nil
+}
+
+func trimTrailingEOL(s string) string {
+	for {
+		switch {
+		case strings.HasSuffix(s, "\r\n"):
+			s = strings.TrimSuffix(s, "\r\n")
+		case strings.HasSuffix(s, "\n"):
+			s = strings.TrimSuffix(s, "\n")
+		case strings.HasSuffix(s, "\r"):
+			s = strings.TrimSuffix(s, "\r")
+		default:
+			return s
+		}
+	}
 }
 
 func scrubGitEnv(env []string) []string {

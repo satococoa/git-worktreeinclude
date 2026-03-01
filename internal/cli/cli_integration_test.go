@@ -217,6 +217,22 @@ func TestHookPathAndPrint(t *testing.T) {
 	}
 }
 
+func TestHookPathAbsoluteMatchesGit(t *testing.T) {
+	fx := setupFixture(t)
+	runGit(t, fx.root, "config", "core.hooksPath", "../shared-hooks")
+
+	stdout, _, code := runCmd(t, fx.root, nil, testBinary, "hook", "path", "--absolute")
+	if code != 0 {
+		t.Fatalf("hook path --absolute exit code = %d", code)
+	}
+	got := strings.TrimSpace(stdout)
+
+	expected := strings.TrimSpace(runGit(t, fx.root, "rev-parse", "--path-format=absolute", "--git-path", "hooks"))
+	if filepath.Clean(got) != filepath.Clean(expected) {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
 func TestGitExtensionInvocation(t *testing.T) {
 	fx := setupFixture(t)
 

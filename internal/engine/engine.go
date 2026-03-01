@@ -265,7 +265,13 @@ func (e *Engine) HookPath(ctx context.Context, cwd string, absolute bool) (strin
 	if err != nil {
 		return "", err
 	}
-	hookPath, err := e.git.RunText(ctx, targetRoot, "rev-parse", "--git-path", "hooks")
+	args := []string{"rev-parse"}
+	if absolute {
+		args = append(args, "--path-format=absolute")
+	}
+	args = append(args, "--git-path", "hooks")
+
+	hookPath, err := e.git.RunText(ctx, targetRoot, args...)
 	if err != nil {
 		return "", &CLIError{Code: exitcode.Env, Msg: "failed to resolve hooks path", Err: err}
 	}
