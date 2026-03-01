@@ -4,6 +4,13 @@
 
 ## Quickstart
 
+### Install (Homebrew)
+
+```sh
+brew tap satococoa/tap
+brew install satococoa/tap/git-worktreeinclude
+```
+
 ### Build
 
 ```sh
@@ -214,3 +221,7 @@ make ci
 
 CI runs on pull requests and pushes to `main` via GitHub Actions.
 `golangci-lint` is used with its default configuration (no `.golangci.yml`).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
