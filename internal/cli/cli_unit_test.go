@@ -19,8 +19,8 @@ func TestRunUnknownSubcommand(t *testing.T) {
 	app := New(&stdout, &stderr)
 
 	code := app.Run([]string{"unknown-subcommand"})
-	if code != 3 {
-		t.Fatalf("Run returned %d, want %d", code, 3)
+	if code != exitcode.Conflict {
+		t.Fatalf("Run returned %d, want %d", code, exitcode.Conflict)
 	}
 	if !strings.Contains(stderr.String(), "No help topic for 'unknown-subcommand'") {
 		t.Fatalf("stderr should contain unknown topic message: %q", stderr.String())

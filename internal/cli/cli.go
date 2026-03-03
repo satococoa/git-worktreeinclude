@@ -105,7 +105,12 @@ func (a *App) runApply(ctx context.Context, cmd *ucli.Command) error {
 		return a.onUsageError(ctx, cmd, errors.New("--from must not be empty"), true)
 	}
 
-	result, code, err := a.engine.Apply(ctx, mustGetwd(), engine.ApplyOptions{
+	wd, err := currentWorkdir()
+	if err != nil {
+		return ucli.Exit(err.Error(), exitcode.Env)
+	}
+
+	result, code, err := a.engine.Apply(ctx, wd, engine.ApplyOptions{
 		From:    from,
 		Include: include,
 		DryRun:  dryRun,
@@ -206,7 +211,12 @@ func (a *App) runDoctor(ctx context.Context, cmd *ucli.Command) error {
 		return a.onUsageError(ctx, cmd, errors.New("--from must not be empty"), true)
 	}
 
-	report, err := a.engine.Doctor(ctx, mustGetwd(), engine.DoctorOptions{
+	wd, err := currentWorkdir()
+	if err != nil {
+		return ucli.Exit(err.Error(), exitcode.Env)
+	}
+
+	report, err := a.engine.Doctor(ctx, wd, engine.DoctorOptions{
 		From:    from,
 		Include: include,
 	})
@@ -255,6 +265,16 @@ func (a *App) newHookCommand() *ucli.Command {
 		Name:         "hook",
 		Usage:        "hook helpers",
 		OnUsageError: a.onUsageError,
+		Action: func(ctx context.Context, cmd *ucli.Command) error {
+			if cmd.Args().Len() == 0 {
+				return a.onUsageError(ctx, cmd, errors.New("hook subcommand is required"), true)
+			}
+			name := cmd.Args().First()
+			if cmd.Command(name) == nil {
+				return a.onUsageError(ctx, cmd, fmt.Errorf("unknown hook subcommand: %s", name), true)
+			}
+			return nil
+		},
 		Commands: []*ucli.Command{
 			{
 				Name:         "path",
@@ -281,7 +301,12 @@ func (a *App) runHookPath(ctx context.Context, cmd *ucli.Command) error {
 		return a.onUsageError(ctx, cmd, errors.New("hook path does not accept positional arguments"), true)
 	}
 
-	p, err := a.engine.HookPath(ctx, mustGetwd(), cmd.Bool("absolute"))
+	wd, err := currentWorkdir()
+	if err != nil {
+		return ucli.Exit(err.Error(), exitcode.Env)
+	}
+
+	p, err := a.engine.HookPath(ctx, wd, cmd.Bool("absolute"))
 	if err != nil {
 		return ucli.Exit(err, codedOrDefault(err, exitcode.Internal))
 	}
@@ -405,12 +430,12 @@ func codedOrDefault(err error, fallback int) int {
 	return fallback
 }
 
-func mustGetwd() string {
+func currentWorkdir() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
-		return "."
+		return "", fmt.Errorf("failed to determine current working directory: %w", err)
 	}
-	return wd
+	return wd, nil
 }
 
 func write(w io.Writer, s string) {

@@ -136,6 +136,9 @@ source <(git-worktreeinclude completion zsh)
 
 # fish
 git-worktreeinclude completion fish > ~/.config/fish/completions/git-worktreeinclude.fish
+
+# pwsh
+git-worktreeinclude completion pwsh | Out-String | Invoke-Expression
 ```
 
 ## JSON output

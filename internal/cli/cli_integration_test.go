@@ -432,7 +432,7 @@ func TestUsageErrorWritesHelpToStderr(t *testing.T) {
 
 func TestCompletionCommand(t *testing.T) {
 	tmpDir := t.TempDir()
-	for _, shell := range []string{"bash", "zsh", "fish"} {
+	for _, shell := range []string{"bash", "zsh", "fish", "pwsh"} {
 		stdout, stderr, code := runCmd(t, tmpDir, nil, testBinary, "completion", shell)
 		if code != 0 {
 			t.Fatalf("completion %s exit code=%d stderr=%s", shell, code, stderr)
@@ -458,6 +458,38 @@ func TestHookPrintUsageErrorShowsHelpOnStderr(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "USAGE:") {
 		t.Fatalf("stderr should include help output: %s", stderr)
+	}
+}
+
+func TestHookSubcommandValidationErrorsGoToStderr(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "hook")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for hook missing subcommand, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected no stdout for hook usage error, got: %q", stdout)
+	}
+	if !strings.Contains(stderr, "hook subcommand is required") {
+		t.Fatalf("stderr should contain hook usage detail: %s", stderr)
+	}
+	if !strings.Contains(stderr, "USAGE:") {
+		t.Fatalf("stderr should include hook help: %s", stderr)
+	}
+
+	stdout, stderr, code = runCmd(t, fx.wt, nil, testBinary, "hook", "nope")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for unknown hook subcommand, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected no stdout for unknown hook usage error, got: %q", stdout)
+	}
+	if !strings.Contains(stderr, "unknown hook subcommand: nope") {
+		t.Fatalf("stderr should contain unknown hook detail: %s", stderr)
+	}
+	if !strings.Contains(stderr, "USAGE:") {
+		t.Fatalf("stderr should include hook help for unknown subcommand: %s", stderr)
 	}
 }
 
