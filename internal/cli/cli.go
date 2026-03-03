@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	ucli "github.com/urfave/cli/v3"
 
 	"github.com/satococoa/git-worktreeinclude/internal/engine"
 	"github.com/satococoa/git-worktreeinclude/internal/exitcode"
@@ -31,86 +32,102 @@ func New(stdout, stderr io.Writer) *App {
 }
 
 func (a *App) Run(args []string) int {
-	if len(args) == 0 {
-		return a.runApply(nil)
-	}
-
-	if strings.HasPrefix(args[0], "-") {
-		return a.runApply(args)
-	}
-
-	switch args[0] {
-	case "apply":
-		return a.runApply(args[1:])
-	case "doctor":
-		return a.runDoctor(args[1:])
-	case "hook":
-		return a.runHook(args[1:])
-	case "help", "-h", "--help":
-		a.printRootUsage()
+	cmd := a.newRootCommand()
+	runArgs := append([]string{cmd.Name}, args...)
+	err := cmd.Run(context.Background(), runArgs)
+	if err == nil {
 		return exitcode.OK
-	default:
-		writef(a.stderr, "unknown subcommand: %s\n\n", args[0])
-		a.printRootUsage()
-		return exitcode.Args
+	}
+
+	var exitErr ucli.ExitCoder
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+
+	return exitcode.Internal
+}
+
+func (a *App) newRootCommand() *ucli.Command {
+	return &ucli.Command{
+		Name:                  "git-worktreeinclude",
+		Usage:                 "apply ignored files listed in .worktreeinclude between Git worktrees",
+		Writer:                a.stdout,
+		ErrWriter:             a.stderr,
+		EnableShellCompletion: true,
+		ConfigureShellCompletionCommand: func(cmd *ucli.Command) {
+			cmd.Hidden = false
+		},
+		OnUsageError:   a.onUsageError,
+		ExitErrHandler: a.handleExitError,
+		Commands: []*ucli.Command{
+			a.newApplyCommand(),
+			a.newDoctorCommand(),
+			a.newHookCommand(),
+		},
 	}
 }
 
-func (a *App) runApply(args []string) int {
-	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
-	fs.SetOutput(a.stderr)
+func (a *App) newApplyCommand() *ucli.Command {
+	return &ucli.Command{
+		Name:         "apply",
+		Usage:        "copy ignored files from source worktree to current worktree",
+		OnUsageError: a.onUsageError,
+		Flags: []ucli.Flag{
+			&ucli.StringFlag{Name: "from", Value: "auto", Usage: "source worktree path or 'auto'"},
+			&ucli.StringFlag{Name: "include", Value: ".worktreeinclude", Usage: "path to include file", TakesFile: true},
+			&ucli.BoolFlag{Name: "dry-run", Usage: "show planned actions without copying"},
+			&ucli.BoolFlag{Name: "force", Usage: "overwrite differing target files"},
+			&ucli.BoolFlag{Name: "json", Usage: "emit JSON output"},
+			&ucli.BoolFlag{Name: "quiet", Usage: "suppress human-readable output"},
+			&ucli.BoolFlag{Name: "verbose", Usage: "enable verbose output"},
+		},
+		Action: a.runApply,
+	}
+}
 
-	from := fs.String("from", "auto", "source worktree path or 'auto'")
-	include := fs.String("include", ".worktreeinclude", "path to include file")
-	dryRun := fs.Bool("dry-run", false, "show planned actions without copying")
-	force := fs.Bool("force", false, "overwrite differing target files")
-	jsonOut := fs.Bool("json", false, "emit JSON output")
-	quiet := fs.Bool("quiet", false, "suppress human-readable output")
-	verbose := fs.Bool("verbose", false, "enable verbose output")
-	fs.Usage = func() { a.printApplyUsage() }
-
-	if err := fs.Parse(args); err != nil {
-		return exitcode.Args
-	}
-	if fs.NArg() != 0 {
-		writeln(a.stderr, "apply does not accept positional arguments")
-		a.printApplyUsage()
-		return exitcode.Args
-	}
-	if *quiet && *verbose {
-		writeln(a.stderr, "--quiet and --verbose cannot be used together")
-		return exitcode.Args
-	}
-	if *from == "" {
-		writeln(a.stderr, "--from must not be empty")
-		return exitcode.Args
+func (a *App) runApply(ctx context.Context, cmd *ucli.Command) error {
+	if cmd.Args().Len() != 0 {
+		return a.onUsageError(ctx, cmd, errors.New("apply does not accept positional arguments"), true)
 	}
 
-	result, code, err := a.engine.Apply(context.Background(), mustGetwd(), engine.ApplyOptions{
-		From:    *from,
-		Include: *include,
-		DryRun:  *dryRun,
-		Force:   *force,
+	from := cmd.String("from")
+	include := cmd.String("include")
+	dryRun := cmd.Bool("dry-run")
+	force := cmd.Bool("force")
+	jsonOut := cmd.Bool("json")
+	quiet := cmd.Bool("quiet")
+	verbose := cmd.Bool("verbose")
+
+	if quiet && verbose {
+		return a.onUsageError(ctx, cmd, errors.New("--quiet and --verbose cannot be used together"), true)
+	}
+	if from == "" {
+		return a.onUsageError(ctx, cmd, errors.New("--from must not be empty"), true)
+	}
+
+	result, code, err := a.engine.Apply(ctx, mustGetwd(), engine.ApplyOptions{
+		From:    from,
+		Include: include,
+		DryRun:  dryRun,
+		Force:   force,
 	})
 	if err != nil {
-		a.printCodedError(err)
-		return code
+		return ucli.Exit(err, code)
 	}
 
-	if *jsonOut {
+	if jsonOut {
 		enc := json.NewEncoder(a.stdout)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(result); err != nil {
-			writef(a.stderr, "failed to write JSON: %v\n", err)
-			return exitcode.Internal
+			return ucli.Exit(fmt.Sprintf("failed to write JSON: %v", err), exitcode.Internal)
 		}
-		return code
+		return exitWithCode(code)
 	}
 
-	if !*quiet {
+	if !quiet {
 		writef(a.stdout, "APPLY from: %s\n", result.From)
 		writef(a.stdout, "APPLY to:   %s\n", result.To)
-		if *verbose {
+		if verbose {
 			writeln(
 				a.stdout,
 				formatIncludeStatusLine(
@@ -138,9 +155,9 @@ func (a *App) runApply(args []string) int {
 			}
 		}
 		for _, action := range result.Actions {
-			writeln(a.stdout, formatActionLine(action, *force))
+			writeln(a.stdout, formatActionLine(action, force))
 		}
-		if *verbose || result.Summary.Matched > 0 {
+		if verbose || result.Summary.Matched > 0 {
 			writef(
 				a.stdout,
 				"SUMMARY matched=%d copied=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
@@ -154,42 +171,47 @@ func (a *App) runApply(args []string) int {
 		}
 	}
 
-	return code
+	return exitWithCode(code)
 }
 
-func (a *App) runDoctor(args []string) int {
-	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	fs.SetOutput(a.stderr)
-	from := fs.String("from", "auto", "source worktree path or 'auto'")
-	include := fs.String("include", ".worktreeinclude", "path to include file")
-	quiet := fs.Bool("quiet", false, "suppress per-action output")
-	verbose := fs.Bool("verbose", false, "enable verbose output")
-	fs.Usage = func() { a.printDoctorUsage() }
+func (a *App) newDoctorCommand() *ucli.Command {
+	return &ucli.Command{
+		Name:         "doctor",
+		Usage:        "print dry-run diagnostics",
+		OnUsageError: a.onUsageError,
+		Flags: []ucli.Flag{
+			&ucli.StringFlag{Name: "from", Value: "auto", Usage: "source worktree path or 'auto'"},
+			&ucli.StringFlag{Name: "include", Value: ".worktreeinclude", Usage: "path to include file", TakesFile: true},
+			&ucli.BoolFlag{Name: "quiet", Usage: "suppress per-action output"},
+			&ucli.BoolFlag{Name: "verbose", Usage: "enable verbose output"},
+		},
+		Action: a.runDoctor,
+	}
+}
 
-	if err := fs.Parse(args); err != nil {
-		return exitcode.Args
-	}
-	if fs.NArg() != 0 {
-		writeln(a.stderr, "doctor does not accept positional arguments")
-		a.printDoctorUsage()
-		return exitcode.Args
-	}
-	if *quiet && *verbose {
-		writeln(a.stderr, "--quiet and --verbose cannot be used together")
-		return exitcode.Args
-	}
-	if *from == "" {
-		writeln(a.stderr, "--from must not be empty")
-		return exitcode.Args
+func (a *App) runDoctor(ctx context.Context, cmd *ucli.Command) error {
+	if cmd.Args().Len() != 0 {
+		return a.onUsageError(ctx, cmd, errors.New("doctor does not accept positional arguments"), true)
 	}
 
-	report, err := a.engine.Doctor(context.Background(), mustGetwd(), engine.DoctorOptions{
-		From:    *from,
-		Include: *include,
+	from := cmd.String("from")
+	include := cmd.String("include")
+	quiet := cmd.Bool("quiet")
+	verbose := cmd.Bool("verbose")
+
+	if quiet && verbose {
+		return a.onUsageError(ctx, cmd, errors.New("--quiet and --verbose cannot be used together"), true)
+	}
+	if from == "" {
+		return a.onUsageError(ctx, cmd, errors.New("--from must not be empty"), true)
+	}
+
+	report, err := a.engine.Doctor(ctx, mustGetwd(), engine.DoctorOptions{
+		From:    from,
+		Include: include,
 	})
 	if err != nil {
-		a.printCodedError(err)
-		return codedOrDefault(err, exitcode.Internal)
+		return ucli.Exit(err, codedOrDefault(err, exitcode.Internal))
 	}
 
 	writef(a.stdout, "TARGET repo root: %s\n", report.TargetRoot)
@@ -216,66 +238,113 @@ func (a *App) runDoctor(args []string) int {
 		report.Result.Summary.Errors,
 	)
 
-	if !*quiet {
+	if !quiet {
 		for _, action := range report.Result.Actions {
 			writeln(a.stdout, formatActionLine(action, false))
 		}
 	}
-	if *verbose && report.Result.Summary.Matched == 0 {
+	if verbose && report.Result.Summary.Matched == 0 {
 		writeln(a.stdout, "No matched ignored files.")
 	}
 
-	return exitcode.OK
+	return nil
 }
 
-func (a *App) runHook(args []string) int {
-	if len(args) == 0 {
-		a.printHookUsage()
-		return exitcode.Args
+func (a *App) newHookCommand() *ucli.Command {
+	return &ucli.Command{
+		Name:         "hook",
+		Usage:        "hook helpers",
+		OnUsageError: a.onUsageError,
+		Commands: []*ucli.Command{
+			{
+				Name:         "path",
+				Usage:        "print hooks path",
+				OnUsageError: a.onUsageError,
+				Flags: []ucli.Flag{
+					&ucli.BoolFlag{Name: "absolute", Usage: "print absolute hooks path"},
+				},
+				Action: a.runHookPath,
+			},
+			{
+				Name:         "print",
+				Usage:        "print hook snippet",
+				ArgsUsage:    "post-checkout",
+				OnUsageError: a.onUsageError,
+				Action:       a.runHookPrint,
+			},
+		},
+	}
+}
+
+func (a *App) runHookPath(ctx context.Context, cmd *ucli.Command) error {
+	if cmd.Args().Len() != 0 {
+		return a.onUsageError(ctx, cmd, errors.New("hook path does not accept positional arguments"), true)
 	}
 
-	switch args[0] {
-	case "path":
-		fs := flag.NewFlagSet("hook path", flag.ContinueOnError)
-		fs.SetOutput(a.stderr)
-		absolute := fs.Bool("absolute", false, "print absolute hooks path")
-		fs.Usage = func() {
-			writeln(a.stderr, "Usage: git-worktreeinclude hook path [--absolute]")
-		}
-		if err := fs.Parse(args[1:]); err != nil {
-			return exitcode.Args
-		}
-		if fs.NArg() != 0 {
-			writeln(a.stderr, "hook path does not accept positional arguments")
-			return exitcode.Args
-		}
+	p, err := a.engine.HookPath(ctx, mustGetwd(), cmd.Bool("absolute"))
+	if err != nil {
+		return ucli.Exit(err, codedOrDefault(err, exitcode.Internal))
+	}
 
-		p, err := a.engine.HookPath(context.Background(), mustGetwd(), *absolute)
-		if err != nil {
-			a.printCodedError(err)
-			return codedOrDefault(err, exitcode.Internal)
-		}
-		writeln(a.stdout, filepath.ToSlash(p))
-		return exitcode.OK
+	writeln(a.stdout, filepath.ToSlash(p))
+	return nil
+}
 
-	case "print":
-		if len(args) != 2 {
-			writeln(a.stderr, "Usage: git-worktreeinclude hook print post-checkout")
-			return exitcode.Args
-		}
-		snippet, err := hooks.PrintSnippet(args[1])
-		if err != nil {
+func (a *App) runHookPrint(ctx context.Context, cmd *ucli.Command) error {
+	if cmd.Args().Len() != 1 {
+		return a.onUsageError(ctx, cmd, errors.New("hook print requires exactly one argument: post-checkout"), true)
+	}
+
+	snippet, err := hooks.PrintSnippet(cmd.Args().First())
+	if err != nil {
+		return ucli.Exit(err.Error(), exitcode.Args)
+	}
+
+	write(a.stdout, snippet)
+	return nil
+}
+
+func (a *App) handleExitError(_ context.Context, _ *ucli.Command, err error) {
+	var exitErr ucli.ExitCoder
+	if !errors.As(err, &exitErr) {
+		if strings.TrimSpace(err.Error()) != "" {
 			writeln(a.stderr, err.Error())
-			return exitcode.Args
 		}
-		write(a.stdout, snippet)
-		return exitcode.OK
-
-	default:
-		writef(a.stderr, "unknown hook subcommand: %s\n", args[0])
-		a.printHookUsage()
-		return exitcode.Args
+		return
 	}
+
+	if strings.TrimSpace(exitErr.Error()) == "" {
+		return
+	}
+
+	writeln(a.stderr, exitErr.Error())
+}
+
+func (a *App) onUsageError(_ context.Context, cmd *ucli.Command, err error, isSubcommand bool) error {
+	writef(a.stderr, "Incorrect Usage: %s\n\n", err.Error())
+
+	root := cmd.Root()
+	origWriter := root.Writer
+	root.Writer = a.stderr
+	defer func() {
+		root.Writer = origWriter
+	}()
+
+	if isSubcommand {
+		_ = ucli.ShowSubcommandHelp(cmd)
+	} else {
+		_ = ucli.ShowRootCommandHelp(root)
+	}
+
+	return ucli.Exit("", exitcode.Args)
+}
+
+func exitWithCode(code int) error {
+	if code == exitcode.OK {
+		return nil
+	}
+
+	return ucli.Exit("", code)
 }
 
 func formatActionLine(action engine.Action, force bool) string {
@@ -328,10 +397,6 @@ func formatIncludeStatusLine(path string, found bool, origin, hint, targetPath s
 	return fmt.Sprintf("INCLUDE file: %s (not found in source; no-op)", path)
 }
 
-func (a *App) printCodedError(err error) {
-	writeln(a.stderr, err.Error())
-}
-
 func codedOrDefault(err error, fallback int) int {
 	var coded *engine.CLIError
 	if errors.As(err, &coded) {
@@ -346,26 +411,6 @@ func mustGetwd() string {
 		return "."
 	}
 	return wd
-}
-
-func (a *App) printRootUsage() {
-	writeln(a.stderr, "Usage: git-worktreeinclude [apply] [flags]")
-	writeln(a.stderr, "       git-worktreeinclude doctor [flags]")
-	writeln(a.stderr, "       git-worktreeinclude hook path [--absolute]")
-	writeln(a.stderr, "       git-worktreeinclude hook print post-checkout")
-}
-
-func (a *App) printApplyUsage() {
-	writeln(a.stderr, "Usage: git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [--force] [--json] [--quiet] [--verbose]")
-}
-
-func (a *App) printDoctorUsage() {
-	writeln(a.stderr, "Usage: git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]")
-}
-
-func (a *App) printHookUsage() {
-	writeln(a.stderr, "Usage: git-worktreeinclude hook path [--absolute]")
-	writeln(a.stderr, "       git-worktreeinclude hook print post-checkout")
 }
 
 func write(w io.Writer, s string) {

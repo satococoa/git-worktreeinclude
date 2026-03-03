@@ -383,6 +383,120 @@ func TestGitExtensionInvocation(t *testing.T) {
 	_ = decodeSingleJSON(t, stdout)
 }
 
+func TestRootCommandHelpAndNoImplicitApply(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary)
+	if code != 0 {
+		t.Fatalf("root help exit code = %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "NAME:") {
+		t.Fatalf("root help output missing NAME: %s", stdout)
+	}
+
+	_, stderr, code = runCmd(t, fx.wt, nil, testBinary, "--from", "auto")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for root --from auto, got %d", code)
+	}
+	if !strings.Contains(stderr, "Incorrect Usage") {
+		t.Fatalf("expected usage error for root --from auto, got: %s", stderr)
+	}
+}
+
+func TestUnknownSubcommandAtRoot(t *testing.T) {
+	fx := setupFixture(t)
+
+	_, stderr, code := runCmd(t, fx.wt, nil, testBinary, "nope")
+	if code != 3 {
+		t.Fatalf("expected exit code 3 for unknown subcommand, got %d", code)
+	}
+	if !strings.Contains(stderr, "No help topic for 'nope'") {
+		t.Fatalf("unexpected stderr for unknown subcommand: %s", stderr)
+	}
+}
+
+func TestUsageErrorWritesHelpToStderr(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--unknown")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for usage error, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected no stdout for usage error, got: %q", stdout)
+	}
+	if !strings.Contains(stderr, "Incorrect Usage") || !strings.Contains(stderr, "NAME:") {
+		t.Fatalf("stderr should contain usage header and help: %s", stderr)
+	}
+}
+
+func TestCompletionCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		stdout, stderr, code := runCmd(t, tmpDir, nil, testBinary, "completion", shell)
+		if code != 0 {
+			t.Fatalf("completion %s exit code=%d stderr=%s", shell, code, stderr)
+		}
+		if strings.TrimSpace(stdout) == "" {
+			t.Fatalf("completion %s should not be empty", shell)
+		}
+	}
+}
+
+func TestHookPrintUsageErrorShowsHelpOnStderr(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "hook", "print")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for hook print usage error, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected no stdout for hook print usage error, got: %q", stdout)
+	}
+	if !strings.Contains(stderr, "Incorrect Usage: hook print requires exactly one argument: post-checkout") {
+		t.Fatalf("stderr should contain usage error detail: %s", stderr)
+	}
+	if !strings.Contains(stderr, "USAGE:") {
+		t.Fatalf("stderr should include help output: %s", stderr)
+	}
+}
+
+func TestApplyUsageValidationErrorsGoToStderr(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "extra")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for apply positional usage error, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected no stdout for apply usage error, got: %q", stdout)
+	}
+	if !strings.Contains(stderr, "apply does not accept positional arguments") {
+		t.Fatalf("stderr should contain apply usage detail: %s", stderr)
+	}
+	if !strings.Contains(stderr, "USAGE:") {
+		t.Fatalf("stderr should include apply help: %s", stderr)
+	}
+}
+
+func TestDoctorUsageValidationErrorsGoToStderr(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--quiet", "--verbose")
+	if code != 2 {
+		t.Fatalf("expected exit code 2 for doctor usage error, got %d", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected no stdout for doctor usage error, got: %q", stdout)
+	}
+	if !strings.Contains(stderr, "--quiet and --verbose cannot be used together") {
+		t.Fatalf("stderr should contain doctor usage detail: %s", stderr)
+	}
+	if !strings.Contains(stderr, "USAGE:") {
+		t.Fatalf("stderr should include doctor help: %s", stderr)
+	}
+}
+
 func TestMergeEnvOverridesExistingKey(t *testing.T) {
 	base := []string{"PATH=/usr/bin", "HOME=/tmp/home"}
 	overrides := []string{"PATH=/custom/bin:/usr/bin"}
