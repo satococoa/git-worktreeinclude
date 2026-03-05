@@ -44,6 +44,29 @@ func TestRunRootHelp(t *testing.T) {
 	}
 }
 
+func TestRunRootVersion(t *testing.T) {
+	oldVersion := Version
+	Version = "test-version"
+	defer func() {
+		Version = oldVersion
+	}()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr)
+
+	code := app.Run([]string{"--version"})
+	if code != exitcode.OK {
+		t.Fatalf("Run returned %d, want %d", code, exitcode.OK)
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("stderr should be empty: %q", stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "git-worktreeinclude version test-version" {
+		t.Fatalf("stdout = %q, want %q", got, "git-worktreeinclude version test-version")
+	}
+}
+
 func TestRunApplyRejectsQuietVerbose(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
