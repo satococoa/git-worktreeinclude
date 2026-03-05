@@ -65,6 +65,21 @@ func TestRunRootVersion(t *testing.T) {
 	if got := strings.TrimSpace(stdout.String()); got != "git-worktreeinclude version test-version" {
 		t.Fatalf("stdout = %q, want %q", got, "git-worktreeinclude version test-version")
 	}
+
+	stdout.Reset()
+	stderr.Reset()
+	app = New(&stdout, &stderr)
+
+	code = app.Run([]string{"-v"})
+	if code != exitcode.OK {
+		t.Fatalf("Run returned %d for -v, want %d", code, exitcode.OK)
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("stderr should be empty for -v: %q", stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "git-worktreeinclude version test-version" {
+		t.Fatalf("stdout for -v = %q, want %q", got, "git-worktreeinclude version test-version")
+	}
 }
 
 func TestRunApplyRejectsQuietVerbose(t *testing.T) {
