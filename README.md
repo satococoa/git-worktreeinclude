@@ -57,6 +57,15 @@ Example:
 
 ## Commands
 
+### `git-worktreeinclude --version`
+
+Print the installed version.
+
+```sh
+git-worktreeinclude --version
+git-worktreeinclude -v
+```
+
 ### `git-worktreeinclude apply`
 
 Uses the current worktree as target and copies from source worktree.

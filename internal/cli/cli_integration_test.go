@@ -403,6 +403,29 @@ func TestRootCommandHelpAndNoImplicitApply(t *testing.T) {
 	}
 }
 
+func TestRootVersionFlags(t *testing.T) {
+	fx := setupFixture(t)
+	prefix := "git-worktreeinclude version "
+
+	for _, args := range [][]string{{"--version"}, {"-v"}} {
+		stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, args...)
+		if code != 0 {
+			t.Fatalf("version command failed for %v: code=%d stderr=%s", args, code, stderr)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr for %v, got %q", args, stderr)
+		}
+
+		line := strings.TrimSpace(stdout)
+		if !strings.HasPrefix(line, prefix) {
+			t.Fatalf("unexpected version output for %v: %q", args, line)
+		}
+		if strings.TrimSpace(strings.TrimPrefix(line, prefix)) == "" {
+			t.Fatalf("version value is empty for %v: %q", args, line)
+		}
+	}
+}
+
 func TestUnknownSubcommandAtRoot(t *testing.T) {
 	fx := setupFixture(t)
 

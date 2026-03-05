@@ -23,6 +23,9 @@ type App struct {
 	engine *engine.Engine
 }
 
+// Version is injected at build time via ldflags. Default is for local builds.
+var Version = "dev"
+
 func New(stdout, stderr io.Writer) *App {
 	return &App{
 		stdout: stdout,
@@ -51,6 +54,7 @@ func (a *App) newRootCommand() *ucli.Command {
 	return &ucli.Command{
 		Name:           "git-worktreeinclude",
 		Usage:          "apply ignored files listed in .worktreeinclude between Git worktrees",
+		Version:        Version,
 		Writer:         a.stdout,
 		ErrWriter:      a.stderr,
 		OnUsageError:   a.onUsageError,

@@ -18,7 +18,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w
+      - -s -w -X github.com/satococoa/git-worktreeinclude/internal/cli.Version={{ .Version }}
 
 archives:
   - id: default
