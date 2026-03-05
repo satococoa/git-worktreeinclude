@@ -430,19 +430,6 @@ func TestUsageErrorWritesHelpToStderr(t *testing.T) {
 	}
 }
 
-func TestCompletionCommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	for _, shell := range []string{"bash", "zsh", "fish", "pwsh"} {
-		stdout, stderr, code := runCmd(t, tmpDir, nil, testBinary, "completion", shell)
-		if code != 0 {
-			t.Fatalf("completion %s exit code=%d stderr=%s", shell, code, stderr)
-		}
-		if strings.TrimSpace(stdout) == "" {
-			t.Fatalf("completion %s should not be empty", shell)
-		}
-	}
-}
-
 func TestHookPrintUsageErrorShowsHelpOnStderr(t *testing.T) {
 	fx := setupFixture(t)
 

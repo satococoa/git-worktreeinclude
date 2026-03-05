@@ -49,14 +49,10 @@ func (a *App) Run(args []string) int {
 
 func (a *App) newRootCommand() *ucli.Command {
 	return &ucli.Command{
-		Name:                  "git-worktreeinclude",
-		Usage:                 "apply ignored files listed in .worktreeinclude between Git worktrees",
-		Writer:                a.stdout,
-		ErrWriter:             a.stderr,
-		EnableShellCompletion: true,
-		ConfigureShellCompletionCommand: func(cmd *ucli.Command) {
-			cmd.Hidden = false
-		},
+		Name:           "git-worktreeinclude",
+		Usage:          "apply ignored files listed in .worktreeinclude between Git worktrees",
+		Writer:         a.stdout,
+		ErrWriter:      a.stderr,
 		OnUsageError:   a.onUsageError,
 		ExitErrHandler: a.handleExitError,
 		Commands: []*ucli.Command{
