@@ -67,7 +67,7 @@ Uses the current worktree as target and copies from source worktree.
 git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [--force] [--json] [--quiet] [--verbose]
 ```
 
-- `--from`: `auto` (default) chooses the main worktree automatically
+- `--from`: `auto` (default) chooses the first non-bare worktree from `git worktree list --porcelain -z` (typically the main worktree)
 - `--include`: include file path (default: `.worktreeinclude`)
   - relative path: resolved from source worktree root only
   - absolute path: must be inside source worktree root
