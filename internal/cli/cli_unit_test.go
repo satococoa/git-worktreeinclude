@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"strings"
 	"testing"
+
+	ucli "github.com/urfave/cli/v3"
 
 	"github.com/satococoa/git-worktreeinclude/internal/engine"
 	"github.com/satococoa/git-worktreeinclude/internal/exitcode"
@@ -15,14 +19,28 @@ func TestRunUnknownSubcommand(t *testing.T) {
 	app := New(&stdout, &stderr)
 
 	code := app.Run([]string{"unknown-subcommand"})
-	if code != exitcode.Args {
-		t.Fatalf("Run returned %d, want %d", code, exitcode.Args)
+	if code != exitcode.Conflict {
+		t.Fatalf("Run returned %d, want %d", code, exitcode.Conflict)
 	}
-	if !strings.Contains(stderr.String(), "unknown subcommand") {
-		t.Fatalf("stderr should contain unknown subcommand message: %q", stderr.String())
+	if !strings.Contains(stderr.String(), "No help topic for 'unknown-subcommand'") {
+		t.Fatalf("stderr should contain unknown topic message: %q", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "Usage: git-worktreeinclude") {
-		t.Fatalf("stderr should include usage: %q", stderr.String())
+}
+
+func TestRunRootHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr)
+
+	code := app.Run(nil)
+	if code != exitcode.OK {
+		t.Fatalf("Run returned %d, want %d", code, exitcode.OK)
+	}
+	if !strings.Contains(stdout.String(), "NAME:") {
+		t.Fatalf("stdout should contain help output: %q", stdout.String())
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("stderr should be empty: %q", stderr.String())
 	}
 }
 
@@ -108,5 +126,16 @@ func TestCodedOrDefault(t *testing.T) {
 	}
 	if got := codedOrDefault(nil, exitcode.Internal); got != exitcode.Internal {
 		t.Fatalf("codedOrDefault(nil) = %d, want %d", got, exitcode.Internal)
+	}
+}
+
+func TestHandleExitErrorPrintsPlainError(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr)
+
+	app.handleExitError(context.Background(), &ucli.Command{Name: "x"}, errors.New("plain failure"))
+	if !strings.Contains(stderr.String(), "plain failure") {
+		t.Fatalf("stderr should contain plain error: %q", stderr.String())
 	}
 }
