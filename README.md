@@ -44,15 +44,16 @@ git worktreeinclude apply --from auto
 
 Tracked files are never copied, even if listed in `.worktreeinclude`.
 
-Example:
+Example for a typical app repo with local env, editor settings, and tool-specific cache:
 
 ```gitignore
 .env
-.env.*
+.env.local
 !.env.example
 
 .vscode/settings.json
-.idea/
+.mise.local.toml
+turbo/.cache/
 ```
 
 ## Commands
@@ -143,8 +144,8 @@ git-worktreeinclude hook print post-checkout
   },
   "actions": [
     {"op": "copy", "path": ".env", "status": "done"},
-    {"op": "skip", "path": ".vscode/settings.json", "status": "same"},
-    {"op": "conflict", "path": ".env.local", "status": "diff"}
+    {"op": "skip", "path": ".mise.local.toml", "status": "same"},
+    {"op": "conflict", "path": ".vscode/settings.json", "status": "diff"}
   ]
 }
 ```
