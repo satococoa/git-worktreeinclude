@@ -10,7 +10,7 @@ set -eu
 
 old="$1"
 if [ "$old" = "0000000000000000000000000000000000000000" ]; then
-  git worktreeinclude apply --from auto --quiet || true
+  git worktreeinclude apply --quiet || true
 fi
 `, nil
 	default:
