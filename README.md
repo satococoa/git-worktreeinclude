@@ -24,18 +24,18 @@ Subcommands are explicit. Use `git-worktreeinclude apply ...`.
 ### Apply
 
 ```sh
-git-worktreeinclude apply --from auto
+git-worktreeinclude apply
 ```
 
 Or via Git extension:
 
 ```sh
-git worktreeinclude apply --from auto
+git worktreeinclude apply
 ```
 
 ## `.worktreeinclude` semantics
 
-- Place `.worktreeinclude` at the source worktree root (for `--from auto`, this is typically the main worktree).
+- Place `.worktreeinclude` at the source worktree root (by default, this is typically the main worktree selected by `--from auto`).
 - Format is gitignore-compatible (`#` comments, blank lines, `!` negation, `/` anchors, `**`, etc.).
 - `.worktreeinclude` may be tracked, untracked, or ignored; if the file exists in the source worktree, it is used.
 - Actual sync target is the intersection of:
@@ -159,7 +159,7 @@ Run this immediately after creating a worktree:
 
 ```sh
 git worktree add <path> -b <branch>
-git -C <path> worktreeinclude apply --from auto --json
+git -C <path> worktreeinclude apply --json
 ```
 
 - Evaluate success by exit code
@@ -186,7 +186,7 @@ set -eu
 
 old="$1"
 if [ "$old" = "0000000000000000000000000000000000000000" ]; then
-  git worktreeinclude apply --from auto --quiet || true
+  git worktreeinclude apply --quiet || true
 fi
 ```
 
@@ -201,7 +201,7 @@ fi
 Notes:
 
 - `git worktree add --no-checkout` may not trigger `post-checkout`.
-- In that case, run `git worktreeinclude apply --from auto` manually.
+- In that case, run `git worktreeinclude apply` manually.
 
 ## Exit codes
 

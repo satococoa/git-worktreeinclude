@@ -350,7 +350,7 @@ func TestHookPathAndPrint(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("hook print exit code = %d", code)
 	}
-	if !strings.Contains(snippet, "git worktreeinclude apply --from auto --quiet || true") {
+	if !strings.Contains(snippet, "git worktreeinclude apply --quiet || true") {
 		t.Fatalf("unexpected hook snippet: %s", snippet)
 	}
 }

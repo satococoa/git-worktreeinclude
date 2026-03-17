@@ -10,7 +10,7 @@ func TestPrintSnippetPostCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrintSnippet returned error: %v", err)
 	}
-	if !strings.Contains(got, "git worktreeinclude apply --from auto --quiet || true") {
+	if !strings.Contains(got, "git worktreeinclude apply --quiet || true") {
 		t.Fatalf("unexpected snippet: %q", got)
 	}
 }

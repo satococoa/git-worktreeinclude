@@ -105,7 +105,7 @@ func TestRunHookPrint(t *testing.T) {
 	if code != exitcode.OK {
 		t.Fatalf("Run returned %d, want %d; stderr=%s", code, exitcode.OK, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "git worktreeinclude apply --from auto --quiet || true") {
+	if !strings.Contains(stdout.String(), "git worktreeinclude apply --quiet || true") {
 		t.Fatalf("unexpected snippet: %q", stdout.String())
 	}
 }
