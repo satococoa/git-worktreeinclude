@@ -73,19 +73,20 @@ func TestRunnerRunTextScrubsGitEnv(t *testing.T) {
 }
 
 func TestRunnerRunIncludesCommandAndStderr(t *testing.T) {
-	nonRepo := t.TempDir()
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q")
 
 	r := NewRunner()
-	_, err := r.Run(context.Background(), nonRepo, "rev-parse", "--show-toplevel")
+	_, err := r.Run(context.Background(), repo, "definitely-not-a-command")
 	if err == nil {
-		t.Fatalf("expected error for non-repository")
+		t.Fatalf("expected error for invalid git command")
 	}
 
 	msg := err.Error()
 	if !strings.Contains(msg, "git -C") {
 		t.Fatalf("error should include command context, got %q", msg)
 	}
-	if !strings.Contains(msg, "not a git repository") {
+	if !strings.Contains(msg, "is not a git command") {
 		t.Fatalf("error should include git stderr, got %q", msg)
 	}
 }

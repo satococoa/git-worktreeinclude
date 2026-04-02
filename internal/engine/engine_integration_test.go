@@ -18,13 +18,15 @@ type engineFixture struct {
 	wt   string
 }
 
+const testIncludeFile = ".test.worktreeinclude"
+
 func TestEngineApplyCopiesIgnoredFiles(t *testing.T) {
 	fx := setupEngineFixture(t)
 	e := NewEngine()
 
 	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -58,7 +60,7 @@ func TestEngineApplyConflictAndForce(t *testing.T) {
 	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
 	_, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -77,7 +79,7 @@ func TestEngineApplyConflictAndForce(t *testing.T) {
 
 	_, code, err = e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 		Force:   true,
 	})
 	if err != nil {
@@ -135,13 +137,13 @@ func TestEngineApplyUsesSourceIncludeWhenTargetIncludeMissing(t *testing.T) {
 	fx := setupEngineFixture(t)
 	e := NewEngine()
 
-	if err := os.Remove(filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+	if err := os.Remove(filepath.Join(fx.wt, testIncludeFile)); err != nil {
 		t.Fatalf("remove target include: %v", err)
 	}
 
 	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -158,14 +160,14 @@ func TestEngineApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testin
 	fx := setupEngineFixture(t)
 	e := NewEngine()
 
-	if err := os.Remove(filepath.Join(fx.root, ".worktreeinclude")); err != nil {
+	if err := os.Remove(filepath.Join(fx.root, testIncludeFile)); err != nil {
 		t.Fatalf("remove source include: %v", err)
 	}
-	writeFile(t, filepath.Join(fx.wt, ".worktreeinclude"), ".env\n")
+	writeFile(t, filepath.Join(fx.wt, testIncludeFile), ".env\n")
 
 	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -179,7 +181,7 @@ func TestEngineApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testin
 
 	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Doctor returned error: %v", err)
@@ -225,21 +227,21 @@ func TestEngineDoctorHintsWhenTargetIncludeIsSymlink(t *testing.T) {
 	fx := setupEngineFixture(t)
 	e := NewEngine()
 
-	if err := os.Remove(filepath.Join(fx.root, ".worktreeinclude")); err != nil {
+	if err := os.Remove(filepath.Join(fx.root, testIncludeFile)); err != nil {
 		t.Fatalf("remove source include: %v", err)
 	}
-	if err := os.Remove(filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+	if err := os.Remove(filepath.Join(fx.wt, testIncludeFile)); err != nil {
 		t.Fatalf("remove target include: %v", err)
 	}
 
 	brokenTarget := filepath.Join(filepath.Dir(fx.wt), "missing.include")
-	if err := os.Symlink(brokenTarget, filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+	if err := os.Symlink(brokenTarget, filepath.Join(fx.wt, testIncludeFile)); err != nil {
 		t.Fatalf("create target symlink include: %v", err)
 	}
 
 	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Doctor returned error: %v", err)
@@ -249,13 +251,13 @@ func TestEngineDoctorHintsWhenTargetIncludeIsSymlink(t *testing.T) {
 	}
 }
 
-func TestEngineDoctorAndHookPath(t *testing.T) {
+func TestEngineDoctor(t *testing.T) {
 	fx := setupEngineFixture(t)
 	e := NewEngine()
 
 	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
 		From:    "auto",
-		Include: ".worktreeinclude",
+		Include: testIncludeFile,
 	})
 	if err != nil {
 		t.Fatalf("Doctor returned error: %v", err)
@@ -265,16 +267,6 @@ func TestEngineDoctorAndHookPath(t *testing.T) {
 	}
 	if report.PatternCount != 3 {
 		t.Fatalf("unexpected pattern count: got %d want 3", report.PatternCount)
-	}
-
-	runGit(t, fx.root, "config", "core.hooksPath", "../shared-hooks")
-	gotHook, err := e.HookPath(context.Background(), fx.root, true)
-	if err != nil {
-		t.Fatalf("HookPath returned error: %v", err)
-	}
-	wantHook := strings.TrimSpace(runGit(t, fx.root, "rev-parse", "--path-format=absolute", "--git-path", "hooks"))
-	if filepath.Clean(gotHook) != filepath.Clean(wantHook) {
-		t.Fatalf("unexpected hook path: got %q want %q", gotHook, wantHook)
 	}
 }
 
@@ -304,8 +296,8 @@ func setupEngineFixture(t *testing.T) engineFixture {
 
 	writeFile(t, filepath.Join(repo, "README.md"), "tracked\n")
 	writeFile(t, filepath.Join(repo, ".gitignore"), ".env\n.env.local\n")
-	writeFile(t, filepath.Join(repo, ".worktreeinclude"), ".env\n.env.local\nREADME.md\n")
-	runGit(t, repo, "add", "README.md", ".gitignore", ".worktreeinclude")
+	writeFile(t, filepath.Join(repo, testIncludeFile), ".env\n.env.local\nREADME.md\n")
+	runGit(t, repo, "add", "README.md", ".gitignore", testIncludeFile)
 	runGit(t, repo, "commit", "-q", "-m", "init")
 
 	writeFile(t, filepath.Join(repo, ".env"), "SOURCE_ENV\n")

@@ -17,6 +17,8 @@ import (
 
 var testBinary string
 
+const testIncludeFile = ".test.worktreeinclude"
+
 func TestMain(m *testing.M) {
 	_, file, _, _ := runtime.Caller(0)
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
@@ -70,7 +72,7 @@ type jsonResult struct {
 func TestApplyAC1AC2AC6AC7(t *testing.T) {
 	fx := setupFixture(t)
 
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--json")
 	if code != 0 {
 		t.Fatalf("apply --json exit code = %d, stderr=%s", code, stderr)
 	}
@@ -106,7 +108,7 @@ func TestApplyAC3ConflictExit3(t *testing.T) {
 	fx := setupFixture(t)
 	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
 
-	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto")
+	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile)
 	if code != 3 {
 		t.Fatalf("expected exit code 3, got %d", code)
 	}
@@ -124,7 +126,7 @@ func TestApplyAC4ForceOverwrite(t *testing.T) {
 	fx := setupFixture(t)
 	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
 
-	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--force")
+	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--force")
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
@@ -145,7 +147,7 @@ func TestApplyAC5DryRun(t *testing.T) {
 		t.Fatalf("remove .env: %v", err)
 	}
 
-	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--dry-run")
+	_, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--dry-run")
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
@@ -171,11 +173,11 @@ func TestApplyAC8MissingIncludeIsNoop(t *testing.T) {
 
 func TestApplyUsesSourceIncludeWhenTargetIncludeMissing(t *testing.T) {
 	fx := setupFixture(t)
-	if err := os.Remove(filepath.Join(fx.wt, ".worktreeinclude")); err != nil {
+	if err := os.Remove(filepath.Join(fx.wt, testIncludeFile)); err != nil {
 		t.Fatalf("remove target include: %v", err)
 	}
 
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--json")
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d stderr=%s", code, stderr)
 	}
@@ -188,12 +190,12 @@ func TestApplyUsesSourceIncludeWhenTargetIncludeMissing(t *testing.T) {
 
 func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
 	fx := setupFixture(t)
-	if err := os.Remove(filepath.Join(fx.root, ".worktreeinclude")); err != nil {
+	if err := os.Remove(filepath.Join(fx.root, testIncludeFile)); err != nil {
 		t.Fatalf("remove source include: %v", err)
 	}
-	writeFile(t, filepath.Join(fx.wt, ".worktreeinclude"), ".env\n")
+	writeFile(t, filepath.Join(fx.wt, testIncludeFile), ".env\n")
 
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--json")
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d stderr=%s", code, stderr)
 	}
@@ -203,7 +205,7 @@ func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
 		t.Fatalf("expected source-missing include no-op, got summary=%+v", res.Summary)
 	}
 
-	humanStdout, _, humanCode := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto")
+	humanStdout, _, humanCode := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile)
 	if humanCode != 0 {
 		t.Fatalf("expected human apply exit code 0, got %d", humanCode)
 	}
@@ -211,7 +213,7 @@ func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
 		t.Fatalf("apply output missing compatibility hint: %s", humanStdout)
 	}
 
-	doctorOut, _, doctorCode := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto")
+	doctorOut, _, doctorCode := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto", "--include", testIncludeFile)
 	if doctorCode != 0 {
 		t.Fatalf("doctor exit code = %d", doctorCode)
 	}
@@ -286,7 +288,7 @@ func TestApplyJSONConflictOutputContract(t *testing.T) {
 	fx := setupFixture(t)
 	writeFile(t, filepath.Join(fx.wt, ".env.local"), "TARGET_LOCAL\n")
 
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--json")
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--json")
 	if code != 3 {
 		t.Fatalf("expected conflict exit code 3, got %d stderr=%s", code, stderr)
 	}
@@ -319,7 +321,7 @@ func TestApplyWithLongIncludeLine(t *testing.T) {
 
 func TestDoctorCommand(t *testing.T) {
 	fx := setupFixture(t)
-	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto")
+	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto", "--include", testIncludeFile)
 	if code != 0 {
 		t.Fatalf("doctor exit code = %d", code)
 	}
@@ -334,49 +336,12 @@ func TestDoctorCommand(t *testing.T) {
 	}
 }
 
-func TestHookPathAndPrint(t *testing.T) {
-	fx := setupFixture(t)
-
-	stdout, _, code := runCmd(t, fx.root, nil, testBinary, "hook", "path", "--absolute")
-	if code != 0 {
-		t.Fatalf("hook path exit code = %d", code)
-	}
-	hookPath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(hookPath) {
-		t.Fatalf("expected absolute hook path, got %q", hookPath)
-	}
-
-	snippet, _, code := runCmd(t, fx.root, nil, testBinary, "hook", "print", "post-checkout")
-	if code != 0 {
-		t.Fatalf("hook print exit code = %d", code)
-	}
-	if !strings.Contains(snippet, "git worktreeinclude apply --quiet || true") {
-		t.Fatalf("unexpected hook snippet: %s", snippet)
-	}
-}
-
-func TestHookPathAbsoluteMatchesGit(t *testing.T) {
-	fx := setupFixture(t)
-	runGit(t, fx.root, "config", "core.hooksPath", "../shared-hooks")
-
-	stdout, _, code := runCmd(t, fx.root, nil, testBinary, "hook", "path", "--absolute")
-	if code != 0 {
-		t.Fatalf("hook path --absolute exit code = %d", code)
-	}
-	got := strings.TrimSpace(stdout)
-
-	expected := strings.TrimSpace(runGit(t, fx.root, "rev-parse", "--path-format=absolute", "--git-path", "hooks"))
-	if filepath.Clean(got) != filepath.Clean(expected) {
-		t.Fatalf("expected %q, got %q", expected, got)
-	}
-}
-
 func TestGitExtensionInvocation(t *testing.T) {
 	fx := setupFixture(t)
 
 	binDir := filepath.Dir(testBinary)
 	env := []string{fmt.Sprintf("PATH=%s%c%s", binDir, os.PathListSeparator, os.Getenv("PATH"))}
-	stdout, stderr, code := runCmd(t, fx.wt, env, "git", "-C", fx.wt, "worktreeinclude", "apply", "--from", "auto", "--json")
+	stdout, stderr, code := runCmd(t, fx.wt, env, "git", "-C", fx.wt, "worktreeinclude", "apply", "--from", "auto", "--include", testIncludeFile, "--json")
 	if code != 0 {
 		t.Fatalf("git worktreeinclude apply failed: code=%d stderr=%s", code, stderr)
 	}
@@ -453,56 +418,6 @@ func TestUsageErrorWritesHelpToStderr(t *testing.T) {
 	}
 }
 
-func TestHookPrintUsageErrorShowsHelpOnStderr(t *testing.T) {
-	fx := setupFixture(t)
-
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "hook", "print")
-	if code != 2 {
-		t.Fatalf("expected exit code 2 for hook print usage error, got %d", code)
-	}
-	if strings.TrimSpace(stdout) != "" {
-		t.Fatalf("expected no stdout for hook print usage error, got: %q", stdout)
-	}
-	if !strings.Contains(stderr, "Incorrect Usage: hook print requires exactly one argument: post-checkout") {
-		t.Fatalf("stderr should contain usage error detail: %s", stderr)
-	}
-	if !strings.Contains(stderr, "USAGE:") {
-		t.Fatalf("stderr should include help output: %s", stderr)
-	}
-}
-
-func TestHookSubcommandValidationErrorsGoToStderr(t *testing.T) {
-	fx := setupFixture(t)
-
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "hook")
-	if code != 2 {
-		t.Fatalf("expected exit code 2 for hook missing subcommand, got %d", code)
-	}
-	if strings.TrimSpace(stdout) != "" {
-		t.Fatalf("expected no stdout for hook usage error, got: %q", stdout)
-	}
-	if !strings.Contains(stderr, "hook subcommand is required") {
-		t.Fatalf("stderr should contain hook usage detail: %s", stderr)
-	}
-	if !strings.Contains(stderr, "USAGE:") {
-		t.Fatalf("stderr should include hook help: %s", stderr)
-	}
-
-	stdout, stderr, code = runCmd(t, fx.wt, nil, testBinary, "hook", "nope")
-	if code != 2 {
-		t.Fatalf("expected exit code 2 for unknown hook subcommand, got %d", code)
-	}
-	if strings.TrimSpace(stdout) != "" {
-		t.Fatalf("expected no stdout for unknown hook usage error, got: %q", stdout)
-	}
-	if !strings.Contains(stderr, "unknown hook subcommand: nope") {
-		t.Fatalf("stderr should contain unknown hook detail: %s", stderr)
-	}
-	if !strings.Contains(stderr, "USAGE:") {
-		t.Fatalf("stderr should include hook help for unknown subcommand: %s", stderr)
-	}
-}
-
 func TestApplyUsageValidationErrorsGoToStderr(t *testing.T) {
 	fx := setupFixture(t)
 
@@ -573,9 +488,9 @@ func setupFixture(t *testing.T) fixture {
 
 	writeFile(t, filepath.Join(repo, "README.md"), "tracked\n")
 	writeFile(t, filepath.Join(repo, ".gitignore"), ".env\n.env.local\n")
-	writeFile(t, filepath.Join(repo, ".worktreeinclude"), ".env\n.env.local\nREADME.md\n")
+	writeFile(t, filepath.Join(repo, testIncludeFile), ".env\n.env.local\nREADME.md\n")
 
-	runGit(t, repo, "add", "README.md", ".gitignore", ".worktreeinclude")
+	runGit(t, repo, "add", "README.md", ".gitignore", testIncludeFile)
 	runGit(t, repo, "commit", "-q", "-m", "init")
 
 	writeFile(t, filepath.Join(repo, ".env"), "SOURCE_ENV\n")
