@@ -86,8 +86,8 @@ func TestRunnerRunIncludesCommandAndStderr(t *testing.T) {
 	if !strings.Contains(msg, "git -C") {
 		t.Fatalf("error should include command context, got %q", msg)
 	}
-	if !strings.Contains(msg, "is not a git command") {
-		t.Fatalf("error should include git stderr, got %q", msg)
+	if !strings.Contains(msg, "definitely-not-a-command") {
+		t.Fatalf("error should mention unknown subcommand, got %q", msg)
 	}
 }
 
