@@ -291,27 +291,6 @@ func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (Do
 	}, nil
 }
 
-func (e *Engine) HookPath(ctx context.Context, cwd string, absolute bool) (string, error) {
-	targetRoot, err := e.repoRoot(ctx, cwd)
-	if err != nil {
-		return "", err
-	}
-	args := []string{"rev-parse"}
-	if absolute {
-		args = append(args, "--path-format=absolute")
-	}
-	args = append(args, "--git-path", "hooks")
-
-	hookPath, err := e.git.RunText(ctx, targetRoot, args...)
-	if err != nil {
-		return "", &CLIError{Code: exitcode.Env, Msg: "failed to resolve hooks path", Err: err}
-	}
-	if absolute && !filepath.IsAbs(hookPath) {
-		hookPath = filepath.Clean(filepath.Join(targetRoot, hookPath))
-	}
-	return hookPath, nil
-}
-
 func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (prepared, error) {
 	targetRoot, err := e.repoRoot(ctx, cwd)
 	if err != nil {

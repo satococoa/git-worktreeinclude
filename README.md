@@ -109,22 +109,6 @@ Shows:
   - no-op reason when include file is missing in source
 - matched / copy planned / conflicts / missing source / skipped same / errors
 
-### `git-worktreeinclude hook path`
-
-Prints the hooks directory path while respecting `core.hooksPath`.
-
-```sh
-git-worktreeinclude hook path [--absolute]
-```
-
-### `git-worktreeinclude hook print post-checkout`
-
-Prints the recommended `post-checkout` hook snippet.
-
-```sh
-git-worktreeinclude hook print post-checkout
-```
-
 ## JSON output
 
 `apply --json` emits a single JSON object to stdout.
@@ -173,7 +157,15 @@ This project does not auto-install hooks. Use manual setup.
 
 ```sh
 mkdir -p .githooks
-git-worktreeinclude hook print post-checkout > .githooks/post-checkout
+cat > .githooks/post-checkout <<'EOF'
+#!/bin/sh
+set -eu
+
+old="$1"
+if [ "$old" = "0000000000000000000000000000000000000000" ]; then
+  git worktreeinclude apply --quiet || true
+fi
+EOF
 chmod +x .githooks/post-checkout
 git config core.hooksPath .githooks
 ```
@@ -233,6 +225,7 @@ make ci
 
 CI runs on pull requests and pushes to `main` via GitHub Actions.
 `golangci-lint` is used with its default configuration (no `.golangci.yml`).
+`make lint` installs a pinned `golangci-lint` binary into `.cache/bin` on first run, so the first run needs network access to fetch the tool.
 
 ## License
 

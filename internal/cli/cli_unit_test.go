@@ -96,34 +96,6 @@ func TestRunApplyRejectsQuietVerbose(t *testing.T) {
 	}
 }
 
-func TestRunHookPrint(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	app := New(&stdout, &stderr)
-
-	code := app.Run([]string{"hook", "print", "post-checkout"})
-	if code != exitcode.OK {
-		t.Fatalf("Run returned %d, want %d; stderr=%s", code, exitcode.OK, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "git worktreeinclude apply --quiet || true") {
-		t.Fatalf("unexpected snippet: %q", stdout.String())
-	}
-}
-
-func TestRunHookPrintRejectsUnsupportedName(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	app := New(&stdout, &stderr)
-
-	code := app.Run([]string{"hook", "print", "pre-commit"})
-	if code != exitcode.Args {
-		t.Fatalf("Run returned %d, want %d", code, exitcode.Args)
-	}
-	if !strings.Contains(stderr.String(), "unsupported hook name: pre-commit") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
-	}
-}
-
 func TestFormatActionLine(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -7,14 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	ucli "github.com/urfave/cli/v3"
 
 	"github.com/satococoa/git-worktreeinclude/internal/engine"
 	"github.com/satococoa/git-worktreeinclude/internal/exitcode"
-	"github.com/satococoa/git-worktreeinclude/internal/hooks"
 )
 
 type App struct {
@@ -62,7 +60,6 @@ func (a *App) newRootCommand() *ucli.Command {
 		Commands: []*ucli.Command{
 			a.newApplyCommand(),
 			a.newDoctorCommand(),
-			a.newHookCommand(),
 		},
 	}
 }
@@ -260,75 +257,6 @@ func (a *App) runDoctor(ctx context.Context, cmd *ucli.Command) error {
 	return nil
 }
 
-func (a *App) newHookCommand() *ucli.Command {
-	return &ucli.Command{
-		Name:         "hook",
-		Usage:        "hook helpers",
-		OnUsageError: a.onUsageError,
-		Action: func(ctx context.Context, cmd *ucli.Command) error {
-			if cmd.Args().Len() == 0 {
-				return a.onUsageError(ctx, cmd, errors.New("hook subcommand is required"), true)
-			}
-			name := cmd.Args().First()
-			if cmd.Command(name) == nil {
-				return a.onUsageError(ctx, cmd, fmt.Errorf("unknown hook subcommand: %s", name), true)
-			}
-			return nil
-		},
-		Commands: []*ucli.Command{
-			{
-				Name:         "path",
-				Usage:        "print hooks path",
-				OnUsageError: a.onUsageError,
-				Flags: []ucli.Flag{
-					&ucli.BoolFlag{Name: "absolute", Usage: "print absolute hooks path"},
-				},
-				Action: a.runHookPath,
-			},
-			{
-				Name:         "print",
-				Usage:        "print hook snippet",
-				ArgsUsage:    "post-checkout",
-				OnUsageError: a.onUsageError,
-				Action:       a.runHookPrint,
-			},
-		},
-	}
-}
-
-func (a *App) runHookPath(ctx context.Context, cmd *ucli.Command) error {
-	if cmd.Args().Len() != 0 {
-		return a.onUsageError(ctx, cmd, errors.New("hook path does not accept positional arguments"), true)
-	}
-
-	wd, err := currentWorkdir()
-	if err != nil {
-		return ucli.Exit(err.Error(), exitcode.Env)
-	}
-
-	p, err := a.engine.HookPath(ctx, wd, cmd.Bool("absolute"))
-	if err != nil {
-		return ucli.Exit(err, codedOrDefault(err, exitcode.Internal))
-	}
-
-	writeln(a.stdout, filepath.ToSlash(p))
-	return nil
-}
-
-func (a *App) runHookPrint(ctx context.Context, cmd *ucli.Command) error {
-	if cmd.Args().Len() != 1 {
-		return a.onUsageError(ctx, cmd, errors.New("hook print requires exactly one argument: post-checkout"), true)
-	}
-
-	snippet, err := hooks.PrintSnippet(cmd.Args().First())
-	if err != nil {
-		return ucli.Exit(err.Error(), exitcode.Args)
-	}
-
-	write(a.stdout, snippet)
-	return nil
-}
-
 func (a *App) handleExitError(_ context.Context, _ *ucli.Command, err error) {
 	var exitErr ucli.ExitCoder
 	if !errors.As(err, &exitErr) {
@@ -436,10 +364,6 @@ func currentWorkdir() (string, error) {
 		return "", fmt.Errorf("failed to determine current working directory: %w", err)
 	}
 	return wd, nil
-}
-
-func write(w io.Writer, s string) {
-	_, _ = fmt.Fprint(w, s)
 }
 
 func writeln(w io.Writer, a ...any) {
