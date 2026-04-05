@@ -270,6 +270,38 @@ func TestEngineApplyDryRunIncludesMetadata(t *testing.T) {
 	}
 }
 
+func TestEngineApplyDryRunCopyPlanned(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: testIncludeFile,
+		DryRun:  true,
+	})
+	if err != nil {
+		t.Fatalf("Apply dry-run returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply dry-run exit code = %d, want %d", code, exitcode.OK)
+	}
+	if !res.DryRun {
+		t.Fatalf("expected DryRun=true in result")
+	}
+	if res.Summary.CopyPlanned == 0 {
+		t.Fatalf("expected CopyPlanned > 0 in dry-run summary, got %+v", res.Summary)
+	}
+	if res.Summary.Copied != 0 {
+		t.Fatalf("expected Copied=0 in dry-run summary, got %+v", res.Summary)
+	}
+
+	for _, a := range res.Actions {
+		if a.Op == "copy" && a.Status != "planned" {
+			t.Fatalf("expected copy actions to have status=planned in dry-run, got %+v", a)
+		}
+	}
+}
+
 func TestErrorCodeFromCLIError(t *testing.T) {
 	err := &CLIError{Code: exitcode.Env, Msg: "x"}
 	if got := errorCode(err); got != exitcode.Env {
