@@ -130,15 +130,6 @@ func TestFormatActionLine(t *testing.T) {
 	}
 }
 
-func TestCodedOrDefault(t *testing.T) {
-	if got := codedOrDefault(&engine.CLIError{Code: exitcode.Env, Msg: "x"}, exitcode.Internal); got != exitcode.Env {
-		t.Fatalf("codedOrDefault(CLIError) = %d, want %d", got, exitcode.Env)
-	}
-	if got := codedOrDefault(nil, exitcode.Internal); got != exitcode.Internal {
-		t.Fatalf("codedOrDefault(nil) = %d, want %d", got, exitcode.Internal)
-	}
-}
-
 func TestHandleExitErrorPrintsPlainError(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

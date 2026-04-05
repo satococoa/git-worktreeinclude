@@ -51,12 +51,14 @@ type fixture struct {
 }
 
 type jsonResult struct {
+	DryRun      bool   `json:"dry_run"`
 	From        string `json:"from"`
 	To          string `json:"to"`
 	IncludeFile string `json:"include_file"`
 	Summary     struct {
 		Matched           int `json:"matched"`
 		Copied            int `json:"copied"`
+		CopyPlanned       int `json:"copy_planned"`
 		SkippedSame       int `json:"skipped_same"`
 		SkippedMissingSrc int `json:"skipped_missing_src"`
 		Conflicts         int `json:"conflicts"`
@@ -166,7 +168,7 @@ func TestApplyAC8MissingIncludeIsNoop(t *testing.T) {
 	}
 
 	res := decodeSingleJSON(t, stdout)
-	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || len(res.Actions) != 0 {
+	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || res.Summary.CopyPlanned != 0 || len(res.Actions) != 0 {
 		t.Fatalf("expected noop summary, got %+v", res.Summary)
 	}
 }
@@ -201,7 +203,7 @@ func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
 	}
 
 	res := decodeSingleJSON(t, stdout)
-	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || len(res.Actions) != 0 {
+	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || res.Summary.CopyPlanned != 0 || len(res.Actions) != 0 {
 		t.Fatalf("expected source-missing include no-op, got summary=%+v", res.Summary)
 	}
 
@@ -213,12 +215,12 @@ func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
 		t.Fatalf("apply output missing compatibility hint: %s", humanStdout)
 	}
 
-	doctorOut, _, doctorCode := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto", "--include", testIncludeFile)
-	if doctorCode != 0 {
-		t.Fatalf("doctor exit code = %d", doctorCode)
+	dryRunOut, _, dryRunCode := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--dry-run", "--verbose")
+	if dryRunCode != 0 {
+		t.Fatalf("apply --dry-run --verbose exit code = %d", dryRunCode)
 	}
-	if !strings.Contains(doctorOut, "not found in source; found at target path") {
-		t.Fatalf("doctor output missing source/target compatibility hint: %s", doctorOut)
+	if !strings.Contains(dryRunOut, "not found in source; found at target path") {
+		t.Fatalf("apply --dry-run --verbose output missing source/target compatibility hint: %s", dryRunOut)
 	}
 }
 
@@ -319,20 +321,63 @@ func TestApplyWithLongIncludeLine(t *testing.T) {
 	}
 }
 
-func TestDoctorCommand(t *testing.T) {
+func TestApplyDryRunVerboseOutput(t *testing.T) {
 	fx := setupFixture(t)
-	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto", "--include", testIncludeFile)
+	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--dry-run", "--verbose")
 	if code != 0 {
-		t.Fatalf("doctor exit code = %d", code)
+		t.Fatalf("apply --dry-run --verbose exit code = %d", code)
 	}
-	if !strings.Contains(stdout, "TARGET repo root:") {
-		t.Fatalf("doctor output missing target root: %s", stdout)
+	if !strings.Contains(stdout, "APPLY from:") {
+		t.Fatalf("apply --dry-run output missing source root: %s", stdout)
+	}
+	if !strings.Contains(stdout, "APPLY to:") {
+		t.Fatalf("apply --dry-run output missing target root: %s", stdout)
 	}
 	if !strings.Contains(stdout, "SUMMARY matched=") {
-		t.Fatalf("doctor output missing summary: %s", stdout)
+		t.Fatalf("apply --dry-run output missing summary: %s", stdout)
+	}
+	if !strings.Contains(stdout, "copy_planned=") {
+		t.Fatalf("apply --dry-run output should use copy_planned= not copied=: %s", stdout)
+	}
+	if strings.Contains(stdout, "copied=") {
+		t.Fatalf("apply --dry-run output should not use copied=: %s", stdout)
 	}
 	if !strings.Contains(stdout, "INCLUDE file:") {
-		t.Fatalf("doctor output missing include status: %s", stdout)
+		t.Fatalf("apply --dry-run output missing include status: %s", stdout)
+	}
+}
+
+func TestApplyDryRunJSON(t *testing.T) {
+	fx := setupFixture(t)
+
+	if err := os.Remove(filepath.Join(fx.wt, ".env")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("remove .env: %v", err)
+	}
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--dry-run", "--json")
+	if code != 0 {
+		t.Fatalf("apply --dry-run --json exit code = %d, stderr=%s", code, stderr)
+	}
+
+	res := decodeSingleJSON(t, stdout)
+	if !res.DryRun {
+		t.Fatalf("expected dry_run=true in JSON output")
+	}
+	if res.Summary.CopyPlanned == 0 {
+		t.Fatalf("expected copy_planned > 0 in dry-run JSON summary, got %+v", res.Summary)
+	}
+	if res.Summary.Copied != 0 {
+		t.Fatalf("expected copied=0 in dry-run JSON summary, got %+v", res.Summary)
+	}
+
+	for _, a := range res.Actions {
+		if a.Op == "copy" && a.Status != "planned" {
+			t.Fatalf("expected all copy actions to have status=planned in dry-run, got %+v", a)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(fx.wt, ".env")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("dry-run should not create .env")
 	}
 }
 
@@ -436,21 +481,21 @@ func TestApplyUsageValidationErrorsGoToStderr(t *testing.T) {
 	}
 }
 
-func TestDoctorUsageValidationErrorsGoToStderr(t *testing.T) {
+func TestApplyQuietVerboseUsageValidationErrorsGoToStderr(t *testing.T) {
 	fx := setupFixture(t)
 
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--quiet", "--verbose")
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--dry-run", "--quiet", "--verbose")
 	if code != 2 {
-		t.Fatalf("expected exit code 2 for doctor usage error, got %d", code)
+		t.Fatalf("expected exit code 2 for apply usage error, got %d", code)
 	}
 	if strings.TrimSpace(stdout) != "" {
-		t.Fatalf("expected no stdout for doctor usage error, got: %q", stdout)
+		t.Fatalf("expected no stdout for apply usage error, got: %q", stdout)
 	}
 	if !strings.Contains(stderr, "--quiet and --verbose cannot be used together") {
-		t.Fatalf("stderr should contain doctor usage detail: %s", stderr)
+		t.Fatalf("stderr should contain apply usage detail: %s", stderr)
 	}
 	if !strings.Contains(stderr, "USAGE:") {
-		t.Fatalf("stderr should include doctor help: %s", stderr)
+		t.Fatalf("stderr should include apply help: %s", stderr)
 	}
 }
 

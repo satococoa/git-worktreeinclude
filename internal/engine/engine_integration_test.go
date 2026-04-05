@@ -178,19 +178,11 @@ func TestEngineApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testin
 	if res.Summary.Matched != 0 || res.Summary.Copied != 0 || len(res.Actions) != 0 {
 		t.Fatalf("expected source-missing include no-op, got %+v", res.Summary)
 	}
-
-	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
-		From:    "auto",
-		Include: testIncludeFile,
-	})
-	if err != nil {
-		t.Fatalf("Doctor returned error: %v", err)
-	}
-	if report.IncludeFound {
+	if res.IncludeFound {
 		t.Fatalf("expected include to be missing")
 	}
-	if report.IncludeMissingHint != IncludeMissingHintSourceMissingTargetExists {
-		t.Fatalf("unexpected include hint: %q", report.IncludeMissingHint)
+	if res.IncludeMissingHint != IncludeMissingHintSourceMissingTargetExists {
+		t.Fatalf("unexpected include hint: %q", res.IncludeMissingHint)
 	}
 }
 
@@ -219,7 +211,7 @@ func TestEngineApplyReadsIncludeFileIgnoredByGlobalExcludes(t *testing.T) {
 	}
 }
 
-func TestEngineDoctorHintsWhenTargetIncludeIsSymlink(t *testing.T) {
+func TestEngineApplyHintsWhenTargetIncludeIsSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink behavior and permissions vary on Windows")
 	}
@@ -239,34 +231,74 @@ func TestEngineDoctorHintsWhenTargetIncludeIsSymlink(t *testing.T) {
 		t.Fatalf("create target symlink include: %v", err)
 	}
 
-	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
 		Include: testIncludeFile,
+		DryRun:  true,
 	})
 	if err != nil {
-		t.Fatalf("Doctor returned error: %v", err)
+		t.Fatalf("Apply returned error: %v", err)
 	}
-	if report.IncludeMissingHint != IncludeMissingHintSourceMissingTargetExists {
-		t.Fatalf("expected target-only include hint, got %q", report.IncludeMissingHint)
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if res.IncludeMissingHint != IncludeMissingHintSourceMissingTargetExists {
+		t.Fatalf("expected target-only include hint, got %q", res.IncludeMissingHint)
 	}
 }
 
-func TestEngineDoctor(t *testing.T) {
+func TestEngineApplyDryRunIncludesMetadata(t *testing.T) {
 	fx := setupEngineFixture(t)
 	e := NewEngine()
 
-	report, err := e.Doctor(context.Background(), fx.wt, DoctorOptions{
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
 		From:    "auto",
 		Include: testIncludeFile,
+		DryRun:  true,
 	})
 	if err != nil {
-		t.Fatalf("Doctor returned error: %v", err)
+		t.Fatalf("Apply returned error: %v", err)
 	}
-	if !report.IncludeFound {
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if !res.IncludeFound {
 		t.Fatalf("expected include file to be found")
 	}
-	if report.PatternCount != 3 {
-		t.Fatalf("unexpected pattern count: got %d want 3", report.PatternCount)
+	if res.PatternCount != 3 {
+		t.Fatalf("unexpected pattern count: got %d want 3", res.PatternCount)
+	}
+}
+
+func TestEngineApplyDryRunCopyPlanned(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: testIncludeFile,
+		DryRun:  true,
+	})
+	if err != nil {
+		t.Fatalf("Apply dry-run returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply dry-run exit code = %d, want %d", code, exitcode.OK)
+	}
+	if !res.DryRun {
+		t.Fatalf("expected DryRun=true in result")
+	}
+	if res.Summary.CopyPlanned == 0 {
+		t.Fatalf("expected CopyPlanned > 0 in dry-run summary, got %+v", res.Summary)
+	}
+	if res.Summary.Copied != 0 {
+		t.Fatalf("expected Copied=0 in dry-run summary, got %+v", res.Summary)
+	}
+
+	for _, a := range res.Actions {
+		if a.Op == "copy" && a.Status != "planned" {
+			t.Fatalf("expected copy actions to have status=planned in dry-run, got %+v", a)
+		}
 	}
 }
 

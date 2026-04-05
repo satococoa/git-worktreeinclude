@@ -80,6 +80,8 @@ git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [-
   - relative path: resolved from source worktree root only
   - absolute path: must be inside source worktree root
 - `--dry-run`: plan only, make no changes
+  - use `--dry-run --verbose` when you want diagnostics about source/target selection, include file resolution, and planned actions
+  - in dry-run mode, the human-readable summary uses `copy_planned=` instead of `copied=`, and the JSON summary uses `"copy_planned"` instead of `"copied"`
 - `--force`: overwrite differing target files
 - `--json`: emit a single JSON object to stdout
 - `--quiet`: suppress human-readable output
@@ -92,29 +94,15 @@ Safe defaults:
 - Never overwrites by default (differences become conflicts, exit code `3`)
 - Missing source `.worktreeinclude` is a no-op success (exit code `0`)
 
-### `git-worktreeinclude doctor`
-
-Diagnostic command. Produces a dry-run style summary.
-
-```sh
-git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]
-```
-
-Shows:
-
-- target repository root
-- source selection result
-- include file status and pattern count
-  - source include path resolution
-  - no-op reason when include file is missing in source
-- matched / copy planned / conflicts / missing source / skipped same / errors
-
 ## JSON output
 
 `apply --json` emits a single JSON object to stdout.
 
+Normal execution (`apply --json`):
+
 ```json
 {
+  "dry_run": false,
   "from": "/abs/path/source",
   "to": "/abs/path/target",
   "include_file": ".worktreeinclude",
@@ -134,6 +122,32 @@ Shows:
 }
 ```
 
+Dry-run mode (`apply --dry-run --json`):
+
+```json
+{
+  "dry_run": true,
+  "from": "/abs/path/source",
+  "to": "/abs/path/target",
+  "include_file": ".worktreeinclude",
+  "summary": {
+    "matched": 12,
+    "copy_planned": 8,
+    "skipped_same": 3,
+    "skipped_missing_src": 1,
+    "conflicts": 0,
+    "errors": 0
+  },
+  "actions": [
+    {"op": "copy", "path": ".env", "status": "planned"},
+    {"op": "skip", "path": ".mise.local.toml", "status": "same"},
+    {"op": "conflict", "path": ".vscode/settings.json", "status": "diff"}
+  ]
+}
+```
+
+- `"dry_run": true` indicates no files were written
+- In dry-run mode `"copy_planned"` is used instead of `"copied"` in the summary (they are mutually exclusive)
 - `path` is repo-root relative and slash-separated
 - File contents and secrets are never output
 

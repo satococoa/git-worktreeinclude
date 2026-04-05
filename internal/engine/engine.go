@@ -26,7 +26,8 @@ type Action struct {
 
 type Summary struct {
 	Matched           int `json:"matched"`
-	Copied            int `json:"copied"`
+	Copied            int `json:"copied,omitempty"`
+	CopyPlanned       int `json:"copy_planned,omitempty"`
 	SkippedSame       int `json:"skipped_same"`
 	SkippedMissingSrc int `json:"skipped_missing_src"`
 	Conflicts         int `json:"conflicts"`
@@ -34,6 +35,7 @@ type Summary struct {
 }
 
 type Result struct {
+	DryRun      bool     `json:"dry_run"`
 	From        string   `json:"from"`
 	To          string   `json:"to"`
 	IncludeFile string   `json:"include_file"`
@@ -54,24 +56,6 @@ type ApplyOptions struct {
 	Include string
 	DryRun  bool
 	Force   bool
-}
-
-type DoctorOptions struct {
-	From    string
-	Include string
-}
-
-type DoctorReport struct {
-	TargetRoot         string
-	SourceRoot         string
-	FromMode           string
-	IncludePath        string
-	IncludeFound       bool
-	IncludeOrigin      string
-	IncludeMissingHint string
-	TargetIncludePath  string
-	PatternCount       int
-	Result             Result
 }
 
 type Engine struct {
@@ -142,6 +126,7 @@ func (e *Engine) Apply(ctx context.Context, cwd string, opts ApplyOptions) (Resu
 
 func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int) {
 	result := Result{
+		DryRun:              dryRun,
 		From:                prep.sourceRoot,
 		To:                  prep.targetRoot,
 		IncludeFile:         prep.includeArg,
@@ -217,7 +202,11 @@ func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int
 				status = "done"
 			}
 			result.Actions = append(result.Actions, Action{Op: "copy", Path: rel, Status: status})
-			result.Summary.Copied++
+			if dryRun {
+				result.Summary.CopyPlanned++
+			} else {
+				result.Summary.Copied++
+			}
 			continue
 		}
 
@@ -257,7 +246,11 @@ func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int
 			status = "done"
 		}
 		result.Actions = append(result.Actions, Action{Op: "copy", Path: rel, Status: status})
-		result.Summary.Copied++
+		if dryRun {
+			result.Summary.CopyPlanned++
+		} else {
+			result.Summary.Copied++
+		}
 	}
 
 	if result.Summary.Errors > 0 {
@@ -267,28 +260,6 @@ func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int
 		return result, exitcode.Conflict
 	}
 	return result, exitcode.OK
-}
-
-func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (DoctorReport, error) {
-	prep, err := e.prepare(ctx, cwd, opts.From, opts.Include)
-	if err != nil {
-		return DoctorReport{}, err
-	}
-
-	res, _ := e.executePrepared(prep, true, false)
-
-	return DoctorReport{
-		TargetRoot:         prep.targetRoot,
-		SourceRoot:         prep.sourceRoot,
-		FromMode:           prep.fromMode,
-		IncludePath:        prep.includePath,
-		IncludeFound:       prep.includeFound,
-		IncludeOrigin:      prep.includeOrigin,
-		IncludeMissingHint: prep.includeMissingHint,
-		TargetIncludePath:  prep.targetIncludePath,
-		PatternCount:       prep.patternCount,
-		Result:             res,
-	}, nil
 }
 
 func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (prepared, error) {

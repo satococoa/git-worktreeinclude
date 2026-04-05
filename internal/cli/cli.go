@@ -59,7 +59,6 @@ func (a *App) newRootCommand() *ucli.Command {
 		ExitErrHandler: a.handleExitError,
 		Commands: []*ucli.Command{
 			a.newApplyCommand(),
-			a.newDoctorCommand(),
 		},
 	}
 }
@@ -160,101 +159,33 @@ func (a *App) runApply(ctx context.Context, cmd *ucli.Command) error {
 			writeln(a.stdout, formatActionLine(action, force))
 		}
 		if verbose || result.Summary.Matched > 0 {
-			writef(
-				a.stdout,
-				"SUMMARY matched=%d copied=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
-				result.Summary.Matched,
-				result.Summary.Copied,
-				result.Summary.SkippedSame,
-				result.Summary.SkippedMissingSrc,
-				result.Summary.Conflicts,
-				result.Summary.Errors,
-			)
+			if dryRun {
+				writef(
+					a.stdout,
+					"SUMMARY matched=%d copy_planned=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
+					result.Summary.Matched,
+					result.Summary.CopyPlanned,
+					result.Summary.SkippedSame,
+					result.Summary.SkippedMissingSrc,
+					result.Summary.Conflicts,
+					result.Summary.Errors,
+				)
+			} else {
+				writef(
+					a.stdout,
+					"SUMMARY matched=%d copied=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
+					result.Summary.Matched,
+					result.Summary.Copied,
+					result.Summary.SkippedSame,
+					result.Summary.SkippedMissingSrc,
+					result.Summary.Conflicts,
+					result.Summary.Errors,
+				)
+			}
 		}
 	}
 
 	return exitWithCode(code)
-}
-
-func (a *App) newDoctorCommand() *ucli.Command {
-	return &ucli.Command{
-		Name:         "doctor",
-		Usage:        "print dry-run diagnostics",
-		OnUsageError: a.onUsageError,
-		Flags: []ucli.Flag{
-			&ucli.StringFlag{Name: "from", Value: "auto", Usage: "source worktree path or 'auto'"},
-			&ucli.StringFlag{Name: "include", Value: ".worktreeinclude", Usage: "path to include file", TakesFile: true},
-			&ucli.BoolFlag{Name: "quiet", Usage: "suppress per-action output"},
-			&ucli.BoolFlag{Name: "verbose", Usage: "enable verbose output"},
-		},
-		Action: a.runDoctor,
-	}
-}
-
-func (a *App) runDoctor(ctx context.Context, cmd *ucli.Command) error {
-	if cmd.Args().Len() != 0 {
-		return a.onUsageError(ctx, cmd, errors.New("doctor does not accept positional arguments"), true)
-	}
-
-	from := cmd.String("from")
-	include := cmd.String("include")
-	quiet := cmd.Bool("quiet")
-	verbose := cmd.Bool("verbose")
-
-	if quiet && verbose {
-		return a.onUsageError(ctx, cmd, errors.New("--quiet and --verbose cannot be used together"), true)
-	}
-	if from == "" {
-		return a.onUsageError(ctx, cmd, errors.New("--from must not be empty"), true)
-	}
-
-	wd, err := currentWorkdir()
-	if err != nil {
-		return ucli.Exit(err.Error(), exitcode.Env)
-	}
-
-	report, err := a.engine.Doctor(ctx, wd, engine.DoctorOptions{
-		From:    from,
-		Include: include,
-	})
-	if err != nil {
-		return ucli.Exit(err, codedOrDefault(err, exitcode.Internal))
-	}
-
-	writef(a.stdout, "TARGET repo root: %s\n", report.TargetRoot)
-	writef(a.stdout, "SOURCE (--from %s): %s\n", report.FromMode, report.SourceRoot)
-	writeln(
-		a.stdout,
-		formatIncludeStatusLine(
-			report.IncludePath,
-			report.IncludeFound,
-			report.IncludeOrigin,
-			report.IncludeMissingHint,
-			report.TargetIncludePath,
-			report.PatternCount,
-		),
-	)
-	writef(
-		a.stdout,
-		"SUMMARY matched=%d copy_planned=%d conflicts=%d missing_src=%d skipped_same=%d errors=%d\n",
-		report.Result.Summary.Matched,
-		report.Result.Summary.Copied,
-		report.Result.Summary.Conflicts,
-		report.Result.Summary.SkippedMissingSrc,
-		report.Result.Summary.SkippedSame,
-		report.Result.Summary.Errors,
-	)
-
-	if !quiet {
-		for _, action := range report.Result.Actions {
-			writeln(a.stdout, formatActionLine(action, false))
-		}
-	}
-	if verbose && report.Result.Summary.Matched == 0 {
-		writeln(a.stdout, "No matched ignored files.")
-	}
-
-	return nil
 }
 
 func (a *App) handleExitError(_ context.Context, _ *ucli.Command, err error) {
@@ -348,14 +279,6 @@ func formatIncludeStatusLine(path string, found bool, origin, hint, targetPath s
 	}
 
 	return fmt.Sprintf("INCLUDE file: %s (not found in source; no-op)", path)
-}
-
-func codedOrDefault(err error, fallback int) int {
-	var coded *engine.CLIError
-	if errors.As(err, &coded) {
-		return coded.Code
-	}
-	return fallback
 }
 
 func currentWorkdir() (string, error) {
