@@ -80,6 +80,7 @@ git-worktreeinclude apply [--from auto|<path>] [--include <path>] [--dry-run] [-
   - relative path: resolved from source worktree root only
   - absolute path: must be inside source worktree root
 - `--dry-run`: plan only, make no changes
+  - use `--dry-run --verbose` when you want diagnostics about source/target selection, include file resolution, and planned actions
 - `--force`: overwrite differing target files
 - `--json`: emit a single JSON object to stdout
 - `--quiet`: suppress human-readable output
@@ -91,23 +92,6 @@ Safe defaults:
 - Never deletes files
 - Never overwrites by default (differences become conflicts, exit code `3`)
 - Missing source `.worktreeinclude` is a no-op success (exit code `0`)
-
-### `git-worktreeinclude doctor`
-
-Diagnostic command. Produces a dry-run style summary.
-
-```sh
-git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]
-```
-
-Shows:
-
-- target repository root
-- source selection result
-- include file status and pattern count
-  - source include path resolution
-  - no-op reason when include file is missing in source
-- matched / copy planned / conflicts / missing source / skipped same / errors
 
 ## JSON output
 

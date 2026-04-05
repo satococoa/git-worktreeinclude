@@ -56,24 +56,6 @@ type ApplyOptions struct {
 	Force   bool
 }
 
-type DoctorOptions struct {
-	From    string
-	Include string
-}
-
-type DoctorReport struct {
-	TargetRoot         string
-	SourceRoot         string
-	FromMode           string
-	IncludePath        string
-	IncludeFound       bool
-	IncludeOrigin      string
-	IncludeMissingHint string
-	TargetIncludePath  string
-	PatternCount       int
-	Result             Result
-}
-
 type Engine struct {
 	git *gitexec.Runner
 }
@@ -267,28 +249,6 @@ func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int
 		return result, exitcode.Conflict
 	}
 	return result, exitcode.OK
-}
-
-func (e *Engine) Doctor(ctx context.Context, cwd string, opts DoctorOptions) (DoctorReport, error) {
-	prep, err := e.prepare(ctx, cwd, opts.From, opts.Include)
-	if err != nil {
-		return DoctorReport{}, err
-	}
-
-	res, _ := e.executePrepared(prep, true, false)
-
-	return DoctorReport{
-		TargetRoot:         prep.targetRoot,
-		SourceRoot:         prep.sourceRoot,
-		FromMode:           prep.fromMode,
-		IncludePath:        prep.includePath,
-		IncludeFound:       prep.includeFound,
-		IncludeOrigin:      prep.includeOrigin,
-		IncludeMissingHint: prep.includeMissingHint,
-		TargetIncludePath:  prep.targetIncludePath,
-		PatternCount:       prep.patternCount,
-		Result:             res,
-	}, nil
 }
 
 func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (prepared, error) {

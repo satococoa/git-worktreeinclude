@@ -213,12 +213,12 @@ func TestApplyNoopWhenSourceIncludeMissingEvenIfTargetHasInclude(t *testing.T) {
 		t.Fatalf("apply output missing compatibility hint: %s", humanStdout)
 	}
 
-	doctorOut, _, doctorCode := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto", "--include", testIncludeFile)
-	if doctorCode != 0 {
-		t.Fatalf("doctor exit code = %d", doctorCode)
+	dryRunOut, _, dryRunCode := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--dry-run", "--verbose")
+	if dryRunCode != 0 {
+		t.Fatalf("apply --dry-run --verbose exit code = %d", dryRunCode)
 	}
-	if !strings.Contains(doctorOut, "not found in source; found at target path") {
-		t.Fatalf("doctor output missing source/target compatibility hint: %s", doctorOut)
+	if !strings.Contains(dryRunOut, "not found in source; found at target path") {
+		t.Fatalf("apply --dry-run --verbose output missing source/target compatibility hint: %s", dryRunOut)
 	}
 }
 
@@ -319,20 +319,23 @@ func TestApplyWithLongIncludeLine(t *testing.T) {
 	}
 }
 
-func TestDoctorCommand(t *testing.T) {
+func TestApplyDryRunVerboseOutput(t *testing.T) {
 	fx := setupFixture(t)
-	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--from", "auto", "--include", testIncludeFile)
+	stdout, _, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--dry-run", "--verbose")
 	if code != 0 {
-		t.Fatalf("doctor exit code = %d", code)
+		t.Fatalf("apply --dry-run --verbose exit code = %d", code)
 	}
-	if !strings.Contains(stdout, "TARGET repo root:") {
-		t.Fatalf("doctor output missing target root: %s", stdout)
+	if !strings.Contains(stdout, "APPLY from:") {
+		t.Fatalf("apply --dry-run output missing source root: %s", stdout)
+	}
+	if !strings.Contains(stdout, "APPLY to:") {
+		t.Fatalf("apply --dry-run output missing target root: %s", stdout)
 	}
 	if !strings.Contains(stdout, "SUMMARY matched=") {
-		t.Fatalf("doctor output missing summary: %s", stdout)
+		t.Fatalf("apply --dry-run output missing summary: %s", stdout)
 	}
 	if !strings.Contains(stdout, "INCLUDE file:") {
-		t.Fatalf("doctor output missing include status: %s", stdout)
+		t.Fatalf("apply --dry-run output missing include status: %s", stdout)
 	}
 }
 
@@ -436,21 +439,21 @@ func TestApplyUsageValidationErrorsGoToStderr(t *testing.T) {
 	}
 }
 
-func TestDoctorUsageValidationErrorsGoToStderr(t *testing.T) {
+func TestApplyQuietVerboseUsageValidationErrorsGoToStderr(t *testing.T) {
 	fx := setupFixture(t)
 
-	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "doctor", "--quiet", "--verbose")
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--dry-run", "--quiet", "--verbose")
 	if code != 2 {
-		t.Fatalf("expected exit code 2 for doctor usage error, got %d", code)
+		t.Fatalf("expected exit code 2 for apply usage error, got %d", code)
 	}
 	if strings.TrimSpace(stdout) != "" {
-		t.Fatalf("expected no stdout for doctor usage error, got: %q", stdout)
+		t.Fatalf("expected no stdout for apply usage error, got: %q", stdout)
 	}
 	if !strings.Contains(stderr, "--quiet and --verbose cannot be used together") {
-		t.Fatalf("stderr should contain doctor usage detail: %s", stderr)
+		t.Fatalf("stderr should contain apply usage detail: %s", stderr)
 	}
 	if !strings.Contains(stderr, "USAGE:") {
-		t.Fatalf("stderr should include doctor help: %s", stderr)
+		t.Fatalf("stderr should include apply help: %s", stderr)
 	}
 }
 
