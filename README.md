@@ -100,6 +100,11 @@ Diagnostic command. Produces a dry-run style summary.
 git-worktreeinclude doctor [--from auto|<path>] [--include <path>] [--quiet] [--verbose]
 ```
 
+- `--from`: same as `apply`
+- `--include`: same as `apply`
+- `--quiet`: suppress per-action output (target root, source, include status, and summary are always shown)
+- `--verbose`: print "no matched files" message when no files are matched
+
 Shows:
 
 - target repository root
@@ -108,6 +113,7 @@ Shows:
   - source include path resolution
   - no-op reason when include file is missing in source
 - matched / copy planned / conflicts / missing source / skipped same / errors
+- per-action lines (suppressed by `--quiet`)
 
 ## JSON output
 
