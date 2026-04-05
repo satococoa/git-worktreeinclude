@@ -98,6 +98,103 @@ func TestEngineApplyConflictAndForce(t *testing.T) {
 	}
 }
 
+func TestEngineApplySkipsSameContent(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	writeFile(t, filepath.Join(fx.wt, ".env"), "SOURCE_ENV\n")
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: testIncludeFile,
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if res.Summary.SkippedSame != 1 {
+		t.Fatalf("expected one skipped-same file, got %+v", res.Summary)
+	}
+	if action := findAction(t, res.Actions, ".env"); action.Status != "same" || action.Op != "skip" {
+		t.Fatalf("expected .env to be skipped as same, got %+v", action)
+	}
+	if res.Summary.Copied != 1 {
+		t.Fatalf("expected only remaining missing file to be copied, got %+v", res.Summary)
+	}
+}
+
+func TestEngineApplySkipsSourceSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior and permissions vary on Windows")
+	}
+
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	if err := os.Remove(filepath.Join(fx.root, ".env")); err != nil {
+		t.Fatalf("remove source .env: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(fx.root, ".env.local"), filepath.Join(fx.root, ".env")); err != nil {
+		t.Fatalf("create source symlink: %v", err)
+	}
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: testIncludeFile,
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if code != exitcode.OK {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.OK)
+	}
+	if res.Summary.SkippedMissingSrc != 1 {
+		t.Fatalf("expected symlink source to be skipped, got %+v", res.Summary)
+	}
+	if action := findAction(t, res.Actions, ".env"); action.Status != "symlink" || action.Op != "skip" {
+		t.Fatalf("expected .env symlink to be skipped, got %+v", action)
+	}
+	if _, err := os.Lstat(filepath.Join(fx.wt, ".env")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("symlink source should not be copied into target, stat err=%v", err)
+	}
+}
+
+func TestEngineApplyTreatsTargetDirectoryAsConflict(t *testing.T) {
+	fx := setupEngineFixture(t)
+	e := NewEngine()
+
+	targetPath := filepath.Join(fx.wt, ".env")
+	if err := os.Mkdir(targetPath, 0o755); err != nil {
+		t.Fatalf("mkdir target path: %v", err)
+	}
+
+	res, code, err := e.Apply(context.Background(), fx.wt, ApplyOptions{
+		From:    "auto",
+		Include: testIncludeFile,
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if code != exitcode.Conflict {
+		t.Fatalf("Apply exit code = %d, want %d", code, exitcode.Conflict)
+	}
+	if res.Summary.Conflicts != 1 {
+		t.Fatalf("expected one conflict for target directory, got %+v", res.Summary)
+	}
+	if action := findAction(t, res.Actions, ".env"); action.Status != "diff" || action.Op != "conflict" {
+		t.Fatalf("expected directory target to register conflict, got %+v", action)
+	}
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatalf("stat target directory: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("target directory should remain intact")
+	}
+}
+
 func TestEngineApplyIncludeValidationAndNoop(t *testing.T) {
 	fx := setupEngineFixture(t)
 	e := NewEngine()
@@ -356,4 +453,15 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
+}
+
+func findAction(t *testing.T, actions []Action, path string) Action {
+	t.Helper()
+	for _, action := range actions {
+		if action.Path == path {
+			return action
+		}
+	}
+	t.Fatalf("action for %s not found", path)
+	return Action{}
 }

@@ -381,6 +381,37 @@ func TestApplyDryRunJSON(t *testing.T) {
 	}
 }
 
+func TestApplyQuietSuppressesPerFileActions(t *testing.T) {
+	fx := setupFixture(t)
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", testIncludeFile, "--quiet")
+	if code != 0 {
+		t.Fatalf("apply --quiet exit code = %d stderr=%s", code, stderr)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("apply --quiet should suppress human-readable output entirely: %s", stdout)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("apply --quiet should not write stderr on success: %q", stderr)
+	}
+}
+
+func TestApplyVerboseReportsNoMatches(t *testing.T) {
+	fx := setupFixture(t)
+	writeFile(t, filepath.Join(fx.root, ".empty.worktreeinclude"), "# comment only\n\n")
+
+	stdout, stderr, code := runCmd(t, fx.wt, nil, testBinary, "apply", "--from", "auto", "--include", ".empty.worktreeinclude", "--verbose")
+	if code != 0 {
+		t.Fatalf("apply --verbose exit code = %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, "No matched ignored files.") {
+		t.Fatalf("apply --verbose should explain empty match set: %s", stdout)
+	}
+	if !strings.Contains(stdout, "patterns=0") {
+		t.Fatalf("apply --verbose should show include metadata for empty include file: %s", stdout)
+	}
+}
+
 func TestGitExtensionInvocation(t *testing.T) {
 	fx := setupFixture(t)
 
