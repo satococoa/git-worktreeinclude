@@ -159,16 +159,29 @@ func (a *App) runApply(ctx context.Context, cmd *ucli.Command) error {
 			writeln(a.stdout, formatActionLine(action, force))
 		}
 		if verbose || result.Summary.Matched > 0 {
-			writef(
-				a.stdout,
-				"SUMMARY matched=%d copied=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
-				result.Summary.Matched,
-				result.Summary.Copied,
-				result.Summary.SkippedSame,
-				result.Summary.SkippedMissingSrc,
-				result.Summary.Conflicts,
-				result.Summary.Errors,
-			)
+			if dryRun {
+				writef(
+					a.stdout,
+					"SUMMARY matched=%d copy_planned=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
+					result.Summary.Matched,
+					result.Summary.CopyPlanned,
+					result.Summary.SkippedSame,
+					result.Summary.SkippedMissingSrc,
+					result.Summary.Conflicts,
+					result.Summary.Errors,
+				)
+			} else {
+				writef(
+					a.stdout,
+					"SUMMARY matched=%d copied=%d skipped_same=%d skipped_missing_src=%d conflicts=%d errors=%d\n",
+					result.Summary.Matched,
+					result.Summary.Copied,
+					result.Summary.SkippedSame,
+					result.Summary.SkippedMissingSrc,
+					result.Summary.Conflicts,
+					result.Summary.Errors,
+				)
+			}
 		}
 	}
 
