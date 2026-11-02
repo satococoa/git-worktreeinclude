@@ -11,6 +11,18 @@ brew tap satococoa/tap
 brew install satococoa/tap/git-worktreeinclude
 ```
 
+### Install (Go)
+
+With Go 1.26 or later installed:
+
+```sh
+go install github.com/satococoa/git-worktreeinclude/cmd/git-worktreeinclude@latest
+```
+
+Add your Go binary installation directory (`GOBIN`, or `$(go env GOPATH)/bin` when `GOBIN` is unset) to `PATH`. This also enables `git worktreeinclude apply`.
+
+Builds installed with `go install` currently report `dev` for `--version`; the installed module version can be inspected with `go version -m` on the binary.
+
 ### Build
 
 ```sh
