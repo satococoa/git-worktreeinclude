@@ -256,7 +256,7 @@ func (e *Engine) executePrepared(prep prepared, dryRun, force bool) (Result, int
 	if result.Summary.Errors > 0 {
 		return result, exitcode.Internal
 	}
-	if result.Summary.Conflicts > 0 && !force {
+	if result.Summary.Conflicts > 0 {
 		return result, exitcode.Conflict
 	}
 	return result, exitcode.OK
