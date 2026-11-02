@@ -243,7 +243,7 @@ func formatActionLine(action engine.Action, force bool) string {
 		return fmt.Sprintf("COPY      %s", action.Path)
 	case "conflict":
 		if force {
-			return fmt.Sprintf("COPY      %s", action.Path)
+			return fmt.Sprintf("CONFLICT  %s (unresolved by --force)", action.Path)
 		}
 		return fmt.Sprintf("CONFLICT  %s (differs; use --force)", action.Path)
 	case "skip":

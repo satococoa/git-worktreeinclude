@@ -11,6 +11,18 @@ brew tap satococoa/tap
 brew install satococoa/tap/git-worktreeinclude
 ```
 
+### Install (Go)
+
+With Go 1.26 or later installed:
+
+```sh
+go install github.com/satococoa/git-worktreeinclude/cmd/git-worktreeinclude@latest
+```
+
+Add your Go binary installation directory (`GOBIN`, or `$(go env GOPATH)/bin` when `GOBIN` is unset) to `PATH`. This also enables `git worktreeinclude apply`.
+
+Builds installed with `go install` currently report `dev` for `--version`; the installed module version can be inspected with `go version -m` on the binary.
+
 ### Build
 
 ```sh
@@ -42,7 +54,7 @@ git worktreeinclude apply
   - Paths matching `.worktreeinclude`
   - Paths Git classifies as ignored
 
-Tracked files are never copied, even if listed in `.worktreeinclude`.
+Files tracked in either the source or target worktree are never copied, even if listed in `.worktreeinclude`, missing from the target working tree, or used with `--force`.
 
 Example for a typical app repo with local env, editor settings, and tool-specific cache:
 
