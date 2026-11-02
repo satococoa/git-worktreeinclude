@@ -42,7 +42,7 @@ git worktreeinclude apply
   - Paths matching `.worktreeinclude`
   - Paths Git classifies as ignored
 
-Tracked files are never copied, even if listed in `.worktreeinclude`.
+Files tracked in either the source or target worktree are never copied, even if listed in `.worktreeinclude`, missing from the target working tree, or used with `--force`.
 
 Example for a typical app repo with local env, editor settings, and tool-specific cache:
 

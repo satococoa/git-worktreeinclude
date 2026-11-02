@@ -342,6 +342,28 @@ func (e *Engine) prepare(ctx context.Context, cwd, fromOpt, includeOpt string) (
 		return prepared{}, err
 	}
 	prep.matched = intersectPaths(ignored, included)
+
+	// The source and target have separate indexes. A source-ignored path may
+	// still be tracked in the target, even when its working-tree file is absent.
+	trackedOutput, err := e.git.Run(ctx, targetRoot, "ls-files", "--cached", "-z")
+	if err != nil {
+		return prepared{}, &CLIError{Code: exitcode.Env, Msg: "failed to list target tracked files", Err: err}
+	}
+	tracked, err := parseNULPaths(trackedOutput)
+	if err != nil {
+		return prepared{}, &CLIError{Code: exitcode.Env, Msg: "failed to parse target tracked files", Err: err}
+	}
+	trackedSet := make(map[string]struct{}, len(tracked))
+	for _, rel := range tracked {
+		trackedSet[rel] = struct{}{}
+	}
+	matched := prep.matched[:0]
+	for _, rel := range prep.matched {
+		if _, isTracked := trackedSet[rel]; !isTracked {
+			matched = append(matched, rel)
+		}
+	}
+	prep.matched = matched
 	return prep, nil
 }
 
